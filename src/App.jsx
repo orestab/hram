@@ -1,46 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { db } from './firebase';
+import { collection, getDocs } from 'firebase/firestore';
 import { 
   Menu, X, Calendar, Clock, MapPin, Phone, Mail, ChevronRight, 
   ArrowLeft, Folder, Image as ImageIcon, ZoomIn, Sun, Sparkles, 
   User, ExternalLink, ChevronLeft as ChevronLeftIcon, Search 
 } from 'lucide-react';
+import './App.css';
 
 const CHURCH_DATA = {
-  title: "Храм Софії Премудрості Божої",
+  title: "Храм Святої Софії–Премудрості Божої",
   city: "м. Луцьк",
-  address: "м. Луцьк, вул. Софіївська, 12",
+  address: "м. Луцьк, вул. Винниченка, 30а (при ВНУ ім. Лесі Українки)",
   phone: "+380 (50) 123-45-67",
-  email: "sofia.lutsk.church@gmail.com",
-  rector: "Протоієрей Василій",
+  email: "sophiahram@gmail.com",
+  rector: "Протоієрей Віктор Пушко",
   workingHours: "Щодня з 08:00 до 19:00"
 };
 
-const SCHEDULE = [
-  { day: "Субота", time: "17:00", service: "Всенічне бдіння", desc: "Святкове вечірнє богослужіння, сповідь" },
-  { day: "Неділя", time: "07:30", service: "Ранкова Божественна Літургія", desc: "Сповідь та Причастя Святих Христових Таїн" },
-  { day: "Неділя", time: "10:00", service: "Пізня Божественна Літургія", desc: "Святкове служіння, дитячий хор" },
-  { day: "Середа", time: "17:00", service: "Молебень з акафістом", desc: "Молитва до Премудрості Божої за мир та воїнів" },
-  { day: "П'ятниця", time: "17:00", service: "Вечірнє богослужіння", desc: "Заупокійна панахида та загальна молитва" }
-];
-
 const CLERGY = [
-  { name: "Протоієрей Василій", role: "Настоятель Храму", desc: "Духовний наставник парафії, опікується духовним та соціальним життям громади." },
-  { name: "Ієрей Михайло", role: "Клірик Храму", desc: "Священнослужитель, здійснює душпастирську опіку та недільну катехізацію." },
-  { name: "Диякон Олексій", role: "Священнослужитель", desc: "Керує церковним хором та супроводжує богослужіння." }
+  { name: "Протоієрей Віктор Пушко", role: "Настоятель Храму", desc: "Духовний наставник парафії, опікується університетською громадою та духовним життям вірян." },
+  { name: "Митрополит Михаїл", role: "Керуючий єпархією (ПЦУ)", desc: "Митрополит Луцький і Волинський, очолює головні архієрейські богослужіння." }
 ];
 
 const PHOTO_ALBUMS = [
   {
     id: 'arch',
     title: "Храм та Святині",
-    subtitle: "Архітектура, внутрішнє оздоблення та хрести Храму Софії",
+    subtitle: "Архітектура університетського храму та внутрішнє оздоблення",
     cover: "https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&q=80&w=800",
     date: "2026 рік",
     photos: [
       { id: 'a1', title: "Величний фасад Храму Софії", url: "https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&q=80&w=1200" },
       { id: 'a2', title: "Святий Вівтар та Іконостас", url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=1200" },
-      { id: 'a3', title: "Куполи храмів у сонячний день", url: "https://images.unsplash.com/photo-1518002171953-a080ee817e1f?auto=format&fit=crop&q=80&w=1200" },
-      { id: 'a4', title: "Дзвони Софіївської дзвіниці", url: "https://images.unsplash.com/photo-1512389142860-9c449e58a543?auto=format&fit=crop&q=80&w=1200" }
+      { id: 'a3', title: "Куполи храму у сонячний день", url: "https://images.unsplash.com/photo-1518002171953-a080ee817e1f?auto=format&fit=crop&q=80&w=1200" },
+      { id: 'a4', title: "Церковний простір та ікони", url: "https://images.unsplash.com/photo-1512389142860-9c449e58a543?auto=format&fit=crop&q=80&w=1200" }
     ]
   },
   {
@@ -51,62 +45,32 @@ const PHOTO_ALBUMS = [
     date: "Осінь 2026",
     photos: [
       { id: 's1', title: "Недільна Божественна Літургія", url: "https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&q=80&w=1200" },
-      { id: 's2', title: "Спільна молитва парафіян", url: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=1200" },
+      { id: 's2', title: "Спільна молитва студентів і парафіян", url: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=1200" },
       { id: 's3', title: "Таїнство Святого Причастя", url: "https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&q=80&w=1200" }
     ]
   },
   {
     id: 'feasts',
-    title: "Престольні Свята",
-    subtitle: "Урочистості з нагоди дня Софії Премудрості Божої",
+    title: "Престольне Свято",
+    subtitle: "Урочистості у Храмі Софії Премудрості Божої",
     cover: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=800",
     date: "Вересень 2026",
     photos: [
-      { id: 'f1', title: "Святковий хресний хід навколо храму", url: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=1200" },
-      { id: 'f2', title: "Благословення та окроплення святою водою", url: "https://images.unsplash.com/photo-1512389142860-9c449e58a543?auto=format&fit=crop&q=80&w=1200" },
-      { id: 'f3', title: "Святково прикрашена ікона Премудрості", url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=1200" }
+      { id: 'f1', title: "Архієрейське богослужіння", url: "https://images.unsplash.com/photo-1438032005730-c779502df39b?auto=format&fit=crop&q=80&w=1200" },
+      { id: 'f2', title: "Праздничний хресний хід довкола храму", url: "https://images.unsplash.com/photo-1512389142860-9c449e58a543?auto=format&fit=crop&q=80&w=1200" },
+      { id: 'f3', title: "Особлива флористика та прикрашення", url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=1200" }
     ]
   },
   {
-    id: 'restoration',
-    title: "Благоустрій та Реставрація",
-    subtitle: "Оновлення іконостасу та території довкола храму",
-    cover: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=800",
-    date: "Літо - Осінь 2026",
+    id: 'community',
+    title: "Життя громади",
+    subtitle: "Благодійні заходи, зустрічі та університетські події",
+    cover: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=1200",
+    date: "2026 рік",
     photos: [
-      { id: 'r1', title: "Завершальний етап розпису святинь", url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=1200" },
-      { id: 'r2', title: "Оновлені елементи центрального іконостасу", url: "https://images.unsplash.com/photo-1518002171953-a080ee817e1f?auto=format&fit=crop&q=80&w=1200" }
+      { id: 'c1', title: "Осіннє оформлення храмового простору", url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=1200" },
+      { id: 'c2', title: "Молодіжна парафіяльна спільнота", url: "https://images.unsplash.com/photo-1518002171953-a080ee817e1f?auto=format&fit=crop&q=80&w=1200" }
     ]
-  }
-];
-
-const NEWS_LIST = [
-  {
-    id: 1,
-    title: "Святкове богослужіння у День Премудрості Божої",
-    date: "10 Жовтня 2026",
-    category: "Свята",
-    summary: "У нашому храмі відбулося урочисте богослужіння з нагоди престольного свята. Чимало парафіян зібралися для спільної молитви.",
-    content: "У день пам'яті Премудрості Божої у Храмі Софії м. Луцька відбулося святкове богослужіння. Очолив Божественну Літургію настоятель храму протоієрей Василій у співслужінні духовенства міста. Під час служби підносилися особливі молебні за мир в Україні, захист наших воїнів та здоров'я усіх парафіян. Після завершення Літургії відбувся традиційний хресний хід довкола храму.",
-    image: "https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&q=80&w=800"
-  },
-  {
-    id: 2,
-    title: "Розклад богослужінь на осінньо-зимовий період",
-    date: "01 Жовтня 2026",
-    category: "Оголошення",
-    summary: "Зверніть увагу на оновлений розклад вечірніх та ранкових служб у нашому храмі.",
-    content: "Шановні парафіяни! З нового місяця вступає в дію оновлений розклад богослужінь. Ранкові служби у недільні дні здійснюються о 07:30 та 10:00, вечірні відправи — о 17:00. Запрошуємо усіх розділити радість молитви.",
-    image: "https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&q=80&w=800"
-  },
-  {
-    id: 3,
-    title: "Завершення чергового етапу реставрації іконостасу",
-    date: "20 Вересня 2026",
-    category: "Життя храму",
-    summary: "Майстри-іконописці завершили відновлення центральних ікон святого вівтаря.",
-    content: "Завдяки старанням нашої парафіяльної громади було успішно завершено реставрацію центральних ікон. Відтепер іконостас постає перед вірянами у всій своїй величі та духовному сяйві. Щиро дякуємо кожному, хто долучився.",
-    image: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=800"
   }
 ];
 
@@ -114,11 +78,41 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
   
+  const [schedule, setSchedule] = useState([]);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+
+  const [newsList, setNewsList] = useState([]);
+  const [loadingNews, setLoadingNews] = useState(true);
+
   const [activeAlbum, setActiveAlbum] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
 
   const [selectedNews, setSelectedNews] = useState(null);
   const [newsSearch, setNewsSearch] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const scheduleSnap = await getDocs(collection(db, "schedule"));
+        setSchedule(scheduleSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error("Помилка завантаження розкладу:", error);
+      } finally {
+        setLoadingSchedule(false);
+      }
+
+      try {
+        const newsSnap = await getDocs(collection(db, "news"));
+        setNewsList(newsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error("Помилка завантаження новин:", error);
+      } finally {
+        setLoadingNews(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   const scrollToSection = (id) => {
     setActiveSection(id);
@@ -129,9 +123,9 @@ export default function App() {
     }
   };
 
-  const filteredNews = NEWS_LIST.filter(item => 
-    item.title.toLowerCase().includes(newsSearch.toLowerCase()) ||
-    item.summary.toLowerCase().includes(newsSearch.toLowerCase())
+  const filteredNews = newsList.filter(item => 
+    item.title?.toLowerCase().includes(newsSearch.toLowerCase()) ||
+    item.summary?.toLowerCase().includes(newsSearch.toLowerCase())
   );
 
   const openLightbox = (idx) => setLightboxIndex(idx);
@@ -157,13 +151,15 @@ export default function App() {
               className="flex items-center space-x-3 cursor-pointer"
               onClick={() => scrollToSection('home')}
             >
-              
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-amber-600 to-sky-950 flex items-center justify-center text-amber-200 shadow border-2 border-amber-300">
+                <Sun className="w-6 h-6" />
+              </div>
               <div>
                 <h1 className="text-base sm:text-lg font-serif font-bold text-slate-900 leading-tight">
-                  Храм Софії Премудрості Божої
+                  Храм Святої Софії
                 </h1>
                 <p className="text-xs text-amber-800 font-semibold uppercase tracking-wide">
-                  м. Луцьк
+                  м. Луцьк (ВНУ ім. Л. Українки)
                 </p>
               </div>
             </div>
@@ -179,7 +175,7 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => scrollToSection(item.id)}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
+                  className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${
                     activeSection === item.id
                       ? 'bg-amber-100 text-amber-900 font-bold'
                       : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'
@@ -193,7 +189,7 @@ export default function App() {
             <div className="md:hidden">
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="p-2 text-slate-700 hover:bg-stone-100 rounded-lg focus:outline-none"
+                className="p-2 text-slate-700 hover:bg-stone-100 rounded-lg focus:outline-none cursor-pointer"
               >
                 {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
@@ -214,7 +210,7 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => scrollToSection(item.id)}
-                className="w-full text-left px-4 py-3 rounded-lg font-medium text-stone-800 hover:bg-amber-50"
+                className="w-full text-left px-4 py-3 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer"
               >
                 {item.label}
               </button>
@@ -232,25 +228,30 @@ export default function App() {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent"></div>
 
         <div className="relative max-w-5xl mx-auto px-4 text-center space-y-6">
-          
+          <div className="inline-flex items-center space-x-2 bg-amber-500/20 backdrop-blur-md border border-amber-400/30 text-amber-200 px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold">
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Православна Церква України (ПЦУ) • м. Луцьк</span>
+          </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-amber-100 leading-tight">
-            Храм Софії Премудрості Божої
+            Храм Святої Софії–Премудрості Божої
           </h1>
 
-          
+          <p className="text-base sm:text-xl text-stone-300 font-light max-w-2xl mx-auto leading-relaxed">
+            Університетський храм при ВНУ ім. Лесі Українки — осередок віри, студентської молитви та духовності на Волині.
+          </p>
 
           <div className="pt-4 flex flex-wrap justify-center gap-4">
             <button
               onClick={() => scrollToSection('info')}
-              className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition flex items-center space-x-2"
+              className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition flex items-center space-x-2 cursor-pointer"
             >
               <span>Дізнатися більше</span>
               <ChevronRight className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollToSection('contacts')}
-              className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-xl border border-white/20 backdrop-blur-md transition"
+              className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-xl border border-white/20 backdrop-blur-md transition cursor-pointer"
             >
               Контакти та проїзд
             </button>
@@ -269,12 +270,12 @@ export default function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7 space-y-5 text-stone-700 leading-relaxed text-sm sm:text-base">
-            <h3 className="text-2xl font-serif font-bold text-amber-900">Історія та значення Премудрості Божої</h3>
+            <h3 className="text-2xl font-serif font-bold text-amber-900">Духовний осередок при університеті ім. Лесі Українки</h3>
             <p>
-              Храм Софії Премудрості Божої у місті Луцьк є важливим осередком духовного життя Волині. Закладений з молитвою та благословенням, він об'єднує вірян для спільної молитви, духовної підтримки та збереження православних традицій.
+              Храм Святої Софії–Премудрості Божої розташований за адресою вул. Винниченка, 30а в місті Луцьк. Будівництво та історія храму тісно пов'язані з Волинським національним університетом імені Лесі Українки, об'єднуючи студентів, викладачів та мешканців навколишніх районів у єдину молитовну родину ПЦУ.
             </p>
             <p>
-              Назва храму присвячена Премудрості Божій — Самому Господу Ісусу Христу. Храм постає як символ святості та світла, що просвітлює кожну людину на шляху віри.
+              У храмі регулярно проходять недільні та святкові богослужіння, акафісти та освітньо-духовні заходи, що сприяють вихованню молоді на християнських моральних цінностях.
             </p>
           </div>
 
@@ -282,34 +283,43 @@ export default function App() {
             <div className="rounded-3xl overflow-hidden shadow-xl border-4 border-amber-100">
               <img 
                 src="https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&q=80&w=800" 
-                alt="Храм Софії м. Луцьк" 
+                alt="Храм Святої Софії у Луцьку" 
                 className="w-full h-80 object-cover"
               />
             </div>
           </div>
         </div>
 
+        {/* Schedule from Firebase */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-amber-100 space-y-6">
           <div className="flex items-center space-x-3 border-b border-amber-100 pb-4">
             <Calendar className="w-6 h-6 text-amber-700" />
             <h3 className="text-xl font-serif font-bold text-slate-900">Розклад богослужінь</h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {SCHEDULE.map((item, idx) => (
-              <div key={idx} className="bg-amber-50/60 p-5 rounded-2xl border border-amber-200/60 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-amber-900 text-sm">{item.day}</span>
-                  <span className="inline-flex items-center text-xs font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg shadow-sm border border-amber-200">
-                    <Clock className="w-3.5 h-3.5 mr-1 text-amber-700" />
-                    {item.time}
-                  </span>
+          {loadingSchedule ? (
+            <div className="text-center py-8 text-sm text-stone-500">Завантаження розкладу...</div>
+          ) : schedule.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {schedule.map((item) => (
+                <div key={item.id} className="bg-amber-50/60 p-5 rounded-2xl border border-amber-200/60 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-amber-900 text-sm">{item.day}</span>
+                    <span className="inline-flex items-center text-xs font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg shadow-sm border border-amber-200">
+                      <Clock className="w-3.5 h-3.5 mr-1 text-amber-700" />
+                      {item.time}
+                    </span>
+                  </div>
+                  <h4 className="font-serif font-bold text-slate-800 text-sm">{item.service}</h4>
+                  <p className="text-xs text-stone-600">{item.desc}</p>
                 </div>
-                <h4 className="font-serif font-bold text-slate-800 text-sm">{item.service}</h4>
-                <p className="text-xs text-stone-600">{item.desc}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-sm text-stone-500">
+              Розклад наразі оновлюється в системі. Завітайте пізніше.
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -318,7 +328,7 @@ export default function App() {
             <p className="text-xs text-stone-600 mt-1">Священнослужителі парафії</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {CLERGY.map((person, idx) => (
               <div key={idx} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm text-center space-y-3">
                 <div className="w-16 h-16 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto">
@@ -351,7 +361,7 @@ export default function App() {
                 <div className="space-y-1">
                   <button 
                     onClick={() => setActiveAlbum(null)}
-                    className="inline-flex items-center text-xs font-bold text-amber-800 hover:text-amber-900 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 mb-2 transition"
+                    className="inline-flex items-center text-xs font-bold text-amber-800 hover:text-amber-900 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 mb-2 transition cursor-pointer"
                   >
                     <ArrowLeft className="w-4 h-4 mr-1.5" /> Назад до всіх альбомів
                   </button>
@@ -460,43 +470,52 @@ export default function App() {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {filteredNews.map((item) => (
-            <div 
-              key={item.id}
-              onClick={() => setSelectedNews(item)}
-              className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col group"
-            >
-              <div className="h-48 overflow-hidden relative">
-                <img 
-                  src={item.image} 
-                  alt={item.title} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                />
-                <span className="absolute top-3 left-3 bg-slate-900/80 text-amber-200 text-[10px] font-bold uppercase px-2.5 py-1 rounded">
-                  {item.category}
-                </span>
-              </div>
-
-              <div className="p-5 flex-grow flex flex-col justify-between space-y-3">
-                <div>
-                  <span className="text-xs text-stone-400 font-medium">{item.date}</span>
-                  <h3 className="font-serif font-bold text-slate-900 text-base group-hover:text-amber-800 transition line-clamp-2 mt-1">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-stone-600 line-clamp-3 mt-2">
-                    {item.summary}
-                  </p>
+        {loadingNews ? (
+          <div className="text-center py-12 text-sm text-stone-500">Завантаження новин з бази даних...</div>
+        ) : filteredNews.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {filteredNews.map((item) => (
+              <div 
+                key={item.id}
+                onClick={() => setSelectedNews(item)}
+                className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col group"
+              >
+                {/* Картка новини: фото повністю видиме без обрізання */}
+                <div className="news-card-img-wrapper">
+                  <img 
+                    src={item.image} 
+                    alt={item.title} 
+                    className="news-card-img"
+                  />
+                  <span className="absolute top-3 left-3 bg-slate-900/80 text-amber-200 text-[10px] font-bold uppercase px-2.5 py-1 rounded shadow">
+                    {item.category || 'Новина'}
+                  </span>
                 </div>
 
-                <div className="pt-2 text-xs font-bold text-amber-800 flex items-center">
-                  <span>Читати повністю</span>
-                  <ChevronRight className="w-4 h-4 ml-1" />
+                <div className="p-5 flex-grow flex flex-col justify-between space-y-3">
+                  <div>
+                    <span className="text-xs text-stone-400 font-medium">{item.date}</span>
+                    <h3 className="font-serif font-bold text-slate-900 text-base group-hover:text-amber-800 transition line-clamp-2 mt-1">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-stone-600 line-clamp-3 mt-2">
+                      {item.summary}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 text-xs font-bold text-amber-800 flex items-center">
+                    <span>Читати повністю</span>
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 text-sm text-stone-500">
+            Наразі немає опублікованих новин.
+          </div>
+        )}
 
       </section>
 
@@ -572,12 +591,12 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-slate-950 border-t border-stone-800 text-stone-400 text-xs py-8">
         <div className="max-w-7xl mx-auto px-4 text-center space-y-2">
-          <p className="font-serif text-sm font-bold text-amber-200">Храм Софії Премудрості Божої (м. Луцьк)</p>
+          <p className="font-serif text-sm font-bold text-amber-200">Храм Святої Софії–Премудрості Божої (м. Луцьк)</p>
           <p>© {new Date().getFullYear()} Усі права захищені.</p>
         </div>
       </footer>
 
-      {/* Lightbox Modal */}
+      {/* Lightbox Modal (для галереї) */}
       {activeAlbum && lightboxIndex !== null && (
         <div 
           className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
@@ -587,21 +606,21 @@ export default function App() {
             
             <button 
               onClick={closeLightbox}
-              className="absolute -top-12 right-0 text-white hover:text-amber-400 p-2"
+              className="absolute -top-12 right-0 text-white hover:text-amber-400 p-2 cursor-pointer"
             >
               <X className="w-8 h-8" />
             </button>
 
             <button 
               onClick={prevPhoto}
-              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/80 transition"
+              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/80 transition cursor-pointer"
             >
               <ChevronLeftIcon className="w-6 h-6" />
             </button>
 
             <button 
               onClick={nextPhoto}
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/80 transition"
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/80 transition cursor-pointer"
             >
               <ChevronRight className="w-6 h-6" />
             </button>
@@ -625,51 +644,61 @@ export default function App() {
         </div>
       )}
 
-      {/* News Details Modal */}
+      {/* Модальне вікно новини: Рівно 40% фото (повне, без обрізання) + 60% текст із скролом */}
       {selectedNews && (
         <div 
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setSelectedNews(null)}
         >
           <div 
-            className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            className="news-modal-container"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative h-64 bg-stone-200">
+            
+            {/* Верхня частина з фото: рівно 40% висоти, повне фото без обрізання */}
+            <div className="news-modal-img-wrapper">
               <img 
                 src={selectedNews.image} 
                 alt={selectedNews.title} 
-                className="w-full h-full object-cover"
+                className="news-modal-img"
               />
               <button 
                 onClick={() => setSelectedNews(null)}
-                className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition"
+                className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition cursor-pointer shadow-lg z-10"
               >
                 <X className="w-5 h-5" />
               </button>
-              <span className="absolute bottom-4 left-4 bg-amber-600 text-white text-xs font-bold uppercase px-3 py-1 rounded-lg">
-                {selectedNews.category}
+              <span className="absolute bottom-3 left-3 bg-amber-600 text-white text-[10px] sm:text-xs font-bold uppercase px-2.5 py-1 rounded-lg">
+                {selectedNews.category || 'Новина'}
               </span>
             </div>
 
-            <div className="p-6 sm:p-8 overflow-y-auto space-y-4">
-              <span className="text-xs text-stone-500 font-medium">{selectedNews.date}</span>
-              <h2 className="text-2xl font-serif font-bold text-slate-900 leading-snug">
+            {/* Нижня частина: рівно 60% висоти під текст зі скролом */}
+            <div className="news-modal-body">
+              <div className="text-xs text-stone-500 font-medium">
+                {selectedNews.date}
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-slate-900 leading-snug">
                 {selectedNews.title}
               </h2>
-              <p className="text-stone-700 text-sm sm:text-base leading-relaxed whitespace-pre-line">
+
+              <div className="w-12 h-0.5 bg-amber-500 rounded-full"></div>
+
+              <div className="text-stone-700 text-xs sm:text-base leading-relaxed whitespace-pre-line space-y-3 pt-1">
                 {selectedNews.content}
-              </p>
+              </div>
             </div>
 
-            <div className="p-4 bg-stone-50 border-t border-stone-200 flex justify-end">
+            <div className="p-3 sm:p-4 bg-stone-50 border-t border-stone-200 flex justify-end flex-shrink-0">
               <button 
                 onClick={() => setSelectedNews(null)}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition"
+                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition cursor-pointer"
               >
                 Закрити
               </button>
             </div>
+
           </div>
         </div>
       )}
