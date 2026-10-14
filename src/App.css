@@ -1,7 +1,13 @@
+@import "tailwindcss";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 90px; /* Запобігає перекриттю заголовків фіксованою шапкою */
+}
 /* Стилі для повного відображення картинок без обрізання */
 .news-card-img-wrapper {
   position: relative;
