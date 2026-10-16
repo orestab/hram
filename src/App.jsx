@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from './firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import './App.css';
 
-// Дефолтні дані на випадок, якщо в базі ще нічого немає
 const DEFAULT_CHURCH_DATA = {
   title: "Храм Святої Софії–Премудрості Божої",
   city: "м. Луцьк",
@@ -58,16 +57,18 @@ export default function App() {
 
   const [expandedWeeks, setExpandedWeeks] = useState({ 0: true, 1: false, 2: false, 3: false });
 
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
   useEffect(() => {
     const fetchData = async () => {
-      // Завантаження інформації та контактів з БД (колекція "settings", документ "churchInfo")
       try {
         const infoSnap = await getDoc(doc(db, "settings", "churchInfo"));
         if (infoSnap.exists()) {
           setChurchData(prev => ({ ...prev, ...infoSnap.data() }));
         }
       } catch (error) {
-        console.error("Помилка завантаження інформації про храм:", error);
+        console.error("Помилка завантаження інформації:", error);
       }
 
       try {
@@ -119,6 +120,43 @@ export default function App() {
 
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (lightboxIndex === null || !selectedAlbum?.photos) return;
+      const total = selectedAlbum.photos.length;
+      if (e.key === 'ArrowRight') {
+        setLightboxIndex((prev) => (prev + 1) % total);
+      } else if (e.key === 'ArrowLeft') {
+        setLightboxIndex((prev) => (prev - 1 + total) % total);
+      } else if (e.key === 'Escape') {
+        setLightboxIndex(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxIndex, selectedAlbum]);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!selectedAlbum?.photos) return;
+    const swipeThreshold = 50;
+    const diff = touchStartX.current - touchEndX.current;
+    const total = selectedAlbum.photos.length;
+
+    if (diff > swipeThreshold) {
+      setLightboxIndex((prev) => (prev + 1) % total);
+    } else if (diff < -swipeThreshold) {
+      setLightboxIndex((prev) => (prev - 1 + total) % total);
+    }
+  };
 
   const openItemView = (type, item) => {
     setScrollPosition(window.scrollY);
@@ -297,7 +335,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Schedule (ПРОСТО СПИСОК СЛУЖБ БЕЗ ДНІВ) */}
+              {/* Schedule */}
               <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-md border border-amber-200 space-y-4">
                 <div className="flex justify-between items-center border-b border-amber-100 pb-3">
                   <div className="flex items-center space-x-3">
@@ -445,7 +483,7 @@ export default function App() {
           </>
         )}
 
-        {/* Окрема підсторінка: Повний розклад на 4 тижні */}
+        {/* Підсторінка: Повний розклад на 4 тижні */}
         {pageView === 'all-schedule' && (
           <section className="py-8 sm:py-16 max-w-5xl mx-auto px-3 sm:px-6 space-y-6">
             <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100 transition">
@@ -591,12 +629,68 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox для фото */}
-      {selectedAlbum && lightboxIndex !== null && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3" onClick={() => setLightboxIndex(null)}>
-          <div className="relative max-w-4xl w-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setLightboxIndex(null)} className="absolute top-2 right-2 bg-black/60 text-white p-2 rounded-full cursor-pointer z-20"><X className="w-6 h-6" /></button>
-            <img src={selectedAlbum.photos[lightboxIndex].url} alt="" className="max-h-[75vh] object-contain rounded-lg shadow-2xl" />
+      {/* Lightbox (Повноекранний перегляд фото зі свайпами та стрілками без індикатора) */}
+      {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-4 select-none" 
+          onClick={() => setLightboxIndex(null)}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            
+            {/* Кнопка закриття */}
+            <button 
+              onClick={() => setLightboxIndex(null)} 
+              className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full cursor-pointer z-20 backdrop-blur-md transition"
+              aria-label="Закрити"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Кнопка "Назад" (ліворуч) */}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                const total = selectedAlbum.photos.length;
+                setLightboxIndex((prev) => (prev - 1 + total) % total);
+              }}
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
+              aria-label="Попереднє фото"
+            >
+              <ChevronLeftIcon className="w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
+
+            {/* Зображення */}
+            <div className="w-full h-[75vh] sm:h-[80vh] flex items-center justify-center px-8 sm:px-16">
+              <img 
+                src={selectedAlbum.photos[lightboxIndex].url} 
+                alt={selectedAlbum.photos[lightboxIndex].title || "Фото"} 
+                className="max-h-full max-w-full object-contain rounded-lg shadow-2xl pointer-events-none" 
+              />
+            </div>
+
+            {/* Кнопка "Вперед" (праворуч) */}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                const total = selectedAlbum.photos.length;
+                setLightboxIndex((prev) => (prev + 1) % total);
+              }}
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
+              aria-label="Наступне фото"
+            >
+              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
+
+            {/* Підпис до фото */}
+            {selectedAlbum.photos[lightboxIndex].title && (
+              <p className="text-white/90 text-xs sm:text-sm text-center mt-3 px-4 font-medium line-clamp-2">
+                {selectedAlbum.photos[lightboxIndex].title}
+              </p>
+            )}
+
           </div>
         </div>
       )}
