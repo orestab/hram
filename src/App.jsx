@@ -659,7 +659,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox (Повноекранний перегляд зі стрілками, свайпами та зумом по подвійному кліку / двома пальцями) */}
+      {/* Lightbox (Повноекранний перегляд) */}
       {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-0 sm:p-4 select-none overflow-hidden" 
@@ -670,12 +670,15 @@ export default function App() {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <div className="relative w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-none">
             
             {/* Кнопка закриття */}
             <button 
-              onClick={() => setLightboxIndex(null)} 
-              className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full cursor-pointer z-30 backdrop-blur-md transition"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex(null);
+              }} 
+              className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full cursor-pointer z-30 backdrop-blur-md transition pointer-events-auto"
               aria-label="Закрити"
             >
               <X className="w-6 h-6" />
@@ -689,23 +692,28 @@ export default function App() {
                   const total = selectedAlbum.photos.length;
                   setLightboxIndex((prev) => (prev - 1 + total) % total);
                 }}
-                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3.5 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3.5 rounded-full backdrop-blur-md transition z-20 cursor-pointer pointer-events-auto"
                 aria-label="Попереднє фото"
               >
                 <ChevronLeftIcon className="w-6 h-6 sm:w-8 sm:h-8" />
               </button>
             )}
 
-            {/* Зображення з підтримкою нативного зуму двома пальцями та зумом по подвійному кліку */}
+            {/* Зображення: заборонено будь-які перегортання від натискання на фото */}
             <div 
-              className="w-full h-full flex items-center justify-center overflow-auto p-4"
+              className="w-full h-full flex items-center justify-center overflow-auto p-4 pointer-events-auto"
               style={{ touchAction: 'pinch-zoom' }}
+              onClick={(e) => e.stopPropagation()}
             >
               <img 
                 src={selectedAlbum.photos[lightboxIndex].url} 
                 alt={selectedAlbum.photos[lightboxIndex].title || "Фото"} 
-                onDoubleClick={() => setIsZoomed(!isZoomed)}
-                className={`max-h-full max-w-full object-contain transition-transform duration-300 cursor-zoom-in ${isZoomed ? 'scale-150 sm:scale-250 cursor-zoom-out' : 'scale-100'}`} 
+                onClick={(e) => e.stopPropagation()} 
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setIsZoomed(!isZoomed);
+                }}
+                className={`max-h-full max-w-full object-contain transition-transform duration-300 ${isZoomed ? 'scale-150 sm:scale-250' : 'scale-100'}`} 
               />
             </div>
 
@@ -717,7 +725,7 @@ export default function App() {
                   const total = selectedAlbum.photos.length;
                   setLightboxIndex((prev) => (prev + 1) % total);
                 }}
-                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3.5 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3.5 rounded-full backdrop-blur-md transition z-20 cursor-pointer pointer-events-auto"
                 aria-label="Наступне фото"
               >
                 <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
@@ -726,7 +734,7 @@ export default function App() {
 
             {/* Підпис до фото */}
             {!isZoomed && selectedAlbum.photos[lightboxIndex].title && (
-              <p className="absolute bottom-4 text-white/90 text-xs sm:text-sm text-center px-4 font-medium line-clamp-2 z-20 bg-black/40 py-2 rounded-xl backdrop-blur-sm max-w-xl">
+              <p className="absolute bottom-4 text-white/90 text-xs sm:text-sm text-center px-4 font-medium line-clamp-2 z-20 bg-black/40 py-2 rounded-xl backdrop-blur-sm max-w-xl pointer-events-auto">
                 {selectedAlbum.photos[lightboxIndex].title}
               </p>
             )}
