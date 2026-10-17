@@ -56,14 +56,13 @@ export default function App() {
   const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [selectedNews, setSelectedNews] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [isZoomed, setIsZoomed] = useState(false); // Стан зуму для фото
+  const [isZoomed, setIsZoomed] = useState(false);
 
   const [expandedWeeks, setExpandedWeeks] = useState({ 0: true, 1: false, 2: false, 3: false });
 
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
-  // Скидання зуму при зміні фото
   useEffect(() => {
     setIsZoomed(false);
   }, [lightboxIndex]);
@@ -167,7 +166,7 @@ export default function App() {
   };
 
   const handleTouchEnd = () => {
-    if (isZoomed) return; // Якщо фото зазумлене, свайпи не перемикають фото
+    if (isZoomed) return;
     if (!selectedAlbum?.photos) return;
     const swipeThreshold = 50;
     const diff = touchStartX.current - touchEndX.current;
@@ -660,7 +659,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox (Повноекранний перегляд фото на весь екран з можливістю зуму) */}
+      {/* Lightbox (Повноекранний перегляд зі стрілками, свайпами та зумом по подвійному кліку / двома пальцями) */}
       {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-0 sm:p-4 select-none overflow-hidden" 
@@ -682,7 +681,7 @@ export default function App() {
               <X className="w-6 h-6" />
             </button>
 
-            {/* Кнопка "Назад" (ліворуч) - ховаємо під час зуму */}
+            {/* Кнопка "Назад" (ліворуч) */}
             {!isZoomed && (
               <button 
                 onClick={(e) => {
@@ -697,19 +696,20 @@ export default function App() {
               </button>
             )}
 
-            {/* Область зображення із зумом по кліку */}
+            {/* Зображення з підтримкою нативного зуму двома пальцями та зумом по подвійному кліку */}
             <div 
-              className="w-full h-full flex items-center justify-center overflow-auto p-4 cursor-zoom-in"
-              onClick={() => setIsZoomed(!isZoomed)}
+              className="w-full h-full flex items-center justify-center overflow-auto p-4"
+              style={{ touchAction: 'pinch-zoom' }}
             >
               <img 
                 src={selectedAlbum.photos[lightboxIndex].url} 
                 alt={selectedAlbum.photos[lightboxIndex].title || "Фото"} 
-                className={`max-h-full max-w-full object-contain transition-transform duration-300 ${isZoomed ? 'scale-150 sm:scale-200 cursor-zoom-out' : 'scale-100'}`} 
+                onDoubleClick={() => setIsZoomed(!isZoomed)}
+                className={`max-h-full max-w-full object-contain transition-transform duration-300 cursor-zoom-in ${isZoomed ? 'scale-150 sm:scale-250 cursor-zoom-out' : 'scale-100'}`} 
               />
             </div>
 
-            {}
+            {/* Кнопка "Вперед" (праворуч) */}
             {!isZoomed && (
               <button 
                 onClick={(e) => {
