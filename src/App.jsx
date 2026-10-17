@@ -41,7 +41,6 @@ export default function App() {
   const [pageView, setPageView] = useState('main');
   const [scrollPosition, setScrollPosition] = useState(0);
 
-  // Стейт даних храму з індикатором завантаження для уникнення блимання статичного тексту
   const [churchData, setChurchData] = useState(null);
   const [loadingChurch, setLoadingChurch] = useState(true);
 
@@ -57,15 +56,20 @@ export default function App() {
   const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [selectedNews, setSelectedNews] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [isZoomed, setIsZoomed] = useState(false); // Стан зуму для фото
 
   const [expandedWeeks, setExpandedWeeks] = useState({ 0: true, 1: false, 2: false, 3: false });
 
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
+  // Скидання зуму при зміні фото
+  useEffect(() => {
+    setIsZoomed(false);
+  }, [lightboxIndex]);
+
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Завантаження основної інформації про храм
       try {
         const infoSnap = await getDoc(doc(db, "settings", "churchInfo"));
         if (infoSnap.exists()) {
@@ -80,7 +84,6 @@ export default function App() {
         setLoadingChurch(false);
       }
 
-      // 2. Завантаження розкладу
       try {
         const scheduleSnap = await getDocs(collection(db, "schedule"));
         const now = new Date();
@@ -105,7 +108,6 @@ export default function App() {
         setLoadingSchedule(false);
       }
 
-      // 3. Завантаження новин
       try {
         const newsSnap = await getDocs(collection(db, "news"));
         const loadedNews = newsSnap.docs.map(doc => {
@@ -120,7 +122,6 @@ export default function App() {
         setLoadingNews(false); 
       }
 
-      // 4. Завантаження фотоальбомів
       try {
         const albumsSnap = await getDocs(collection(db, "photoAlbums"));
         if (!albumsSnap.empty) {
@@ -141,7 +142,6 @@ export default function App() {
     fetchData();
   }, []);
 
-  // Керування стрілками клавіатури у фотогалереї
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (lightboxIndex === null || !selectedAlbum?.photos) return;
@@ -167,6 +167,7 @@ export default function App() {
   };
 
   const handleTouchEnd = () => {
+    if (isZoomed) return; // Якщо фото зазумлене, свайпи не перемикають фото
     if (!selectedAlbum?.photos) return;
     const swipeThreshold = 50;
     const diff = touchStartX.current - touchEndX.current;
@@ -271,7 +272,6 @@ export default function App() {
     return weeks;
   };
 
-  // Показуємо плавну екранну заставку, поки дані летять з Firebase
   if (loadingChurch || !churchData) {
     return (
       <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center space-y-3">
@@ -660,64 +660,73 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox (Перегляд фото) */}
+      {/* Lightbox (Повноекранний перегляд фото на весь екран з можливістю зуму) */}
       {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
         <div 
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-4 select-none" 
-          onClick={() => setLightboxIndex(null)}
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-0 sm:p-4 select-none overflow-hidden" 
+          onClick={() => {
+            if (!isZoomed) setLightboxIndex(null);
+          }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
             
             {/* Кнопка закриття */}
             <button 
               onClick={() => setLightboxIndex(null)} 
-              className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full cursor-pointer z-20 backdrop-blur-md transition"
+              className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full cursor-pointer z-30 backdrop-blur-md transition"
               aria-label="Закрити"
             >
               <X className="w-6 h-6" />
             </button>
 
-            {/* Кнопка "Назад" (ліворуч) */}
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                const total = selectedAlbum.photos.length;
-                setLightboxIndex((prev) => (prev - 1 + total) % total);
-              }}
-              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
-              aria-label="Попереднє фото"
-            >
-              <ChevronLeftIcon className="w-6 h-6 sm:w-8 sm:h-8" />
-            </button>
+            {/* Кнопка "Назад" (ліворуч) - ховаємо під час зуму */}
+            {!isZoomed && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const total = selectedAlbum.photos.length;
+                  setLightboxIndex((prev) => (prev - 1 + total) % total);
+                }}
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3.5 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
+                aria-label="Попереднє фото"
+              >
+                <ChevronLeftIcon className="w-6 h-6 sm:w-8 sm:h-8" />
+              </button>
+            )}
 
-            {/* Зображення */}
-            <div className="w-full h-[75vh] sm:h-[80vh] flex items-center justify-center px-8 sm:px-16">
+            {/* Область зображення із зумом по кліку */}
+            <div 
+              className="w-full h-full flex items-center justify-center overflow-auto p-4 cursor-zoom-in"
+              onClick={() => setIsZoomed(!isZoomed)}
+            >
               <img 
                 src={selectedAlbum.photos[lightboxIndex].url} 
                 alt={selectedAlbum.photos[lightboxIndex].title || "Фото"} 
-                className="max-h-full max-w-full object-contain rounded-lg shadow-2xl pointer-events-none" 
+                className={`max-h-full max-w-full object-contain transition-transform duration-300 ${isZoomed ? 'scale-150 sm:scale-200 cursor-zoom-out' : 'scale-100'}`} 
               />
             </div>
 
-            {/* Кнопка "Вперед" (праворуч) */}
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                const total = selectedAlbum.photos.length;
-                setLightboxIndex((prev) => (prev + 1) % total);
-              }}
-              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
-              aria-label="Наступне фото"
-            >
-              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
-            </button>
+            {}
+            {!isZoomed && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const total = selectedAlbum.photos.length;
+                  setLightboxIndex((prev) => (prev + 1) % total);
+                }}
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/25 text-white p-3.5 rounded-full backdrop-blur-md transition z-20 cursor-pointer"
+                aria-label="Наступне фото"
+              >
+                <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
+              </button>
+            )}
 
             {/* Підпис до фото */}
-            {selectedAlbum.photos[lightboxIndex].title && (
-              <p className="text-white/90 text-xs sm:text-sm text-center mt-3 px-4 font-medium line-clamp-2">
+            {!isZoomed && selectedAlbum.photos[lightboxIndex].title && (
+              <p className="absolute bottom-4 text-white/90 text-xs sm:text-sm text-center px-4 font-medium line-clamp-2 z-20 bg-black/40 py-2 rounded-xl backdrop-blur-sm max-w-xl">
                 {selectedAlbum.photos[lightboxIndex].title}
               </p>
             )}
