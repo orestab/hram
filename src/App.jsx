@@ -3,7 +3,7 @@ import { db } from './firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   Menu, X, Calendar, Clock, MapPin, Phone, Mail, ChevronRight, 
-  ArrowLeft, Folder, Image as ImageIcon, ZoomIn, 
+  ArrowLeft, Image as ImageIcon, ZoomIn, 
   ExternalLink, ChevronLeft as ChevronLeftIcon, Search, ChevronDown, ChevronUp 
 } from 'lucide-react';
 import './App.css';
@@ -169,7 +169,7 @@ export default function App() {
     if (isZoomed) return;
     if (!selectedAlbum?.photos) return;
     
-    const swipeThreshold = 140; // Збільшено поріг, щоб реагувати тільки на довгі, впевнені свайпи
+    const swipeThreshold = 140; 
     const diff = touchStartX.current - touchEndX.current;
     const total = selectedAlbum.photos.length;
 
@@ -660,7 +660,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox (Повноекранний перегляд) */}
+      {/* Lightbox*/}
       {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-0 sm:p-4 select-none overflow-hidden" 
@@ -679,7 +679,7 @@ export default function App() {
               <X className="w-6 h-6" />
             </button>
 
-            {/* Кнопка "Назад" (ліворуч) */}
+            {/* Кнопка "Назад"*/}
             {!isZoomed && (
               <button 
                 onClick={(e) => {
@@ -694,7 +694,7 @@ export default function App() {
               </button>
             )}
 
-            {/* Зона зображення: реагує лише на довгі свайпи та подвійний тап для зуму */}
+            {/* Зона зображення*/}
             <div 
               className="w-full h-full flex items-center justify-center overflow-auto p-4"
               style={{ touchAction: 'pinch-zoom' }}
@@ -710,7 +710,7 @@ export default function App() {
               />
             </div>
 
-            {/* Кнопка "Вперед" (праворуч) */}
+            {/* Кнопка "Вперед"*/}
             {!isZoomed && (
               <button 
                 onClick={(e) => {
