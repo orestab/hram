@@ -168,7 +168,8 @@ export default function App() {
   const handleTouchEnd = () => {
     if (isZoomed) return;
     if (!selectedAlbum?.photos) return;
-    const swipeThreshold = 50;
+    
+    const swipeThreshold = 140; // Збільшено поріг, щоб реагувати тільки на довгі, впевнені свайпи
     const diff = touchStartX.current - touchEndX.current;
     const total = selectedAlbum.photos.length;
 
@@ -693,7 +694,7 @@ export default function App() {
               </button>
             )}
 
-            {/* Зона зображення: свайпи обробляються тут, клік по фото не гортає нікуди */}
+            {/* Зона зображення: реагує лише на довгі свайпи та подвійний тап для зуму */}
             <div 
               className="w-full h-full flex items-center justify-center overflow-auto p-4"
               style={{ touchAction: 'pinch-zoom' }}
