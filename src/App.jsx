@@ -41,7 +41,10 @@ export default function App() {
   const [pageView, setPageView] = useState('main');
   const [scrollPosition, setScrollPosition] = useState(0);
 
-  const [churchData, setChurchData] = useState(DEFAULT_CHURCH_DATA);
+  // Стейт даних храму з індикатором завантаження для уникнення блимання статичного тексту
+  const [churchData, setChurchData] = useState(null);
+  const [loadingChurch, setLoadingChurch] = useState(true);
+
   const [schedule, setSchedule] = useState([]);
   const [loadingSchedule, setLoadingSchedule] = useState(true);
 
@@ -62,15 +65,22 @@ export default function App() {
 
   useEffect(() => {
     const fetchData = async () => {
+      // 1. Завантаження основної інформації про храм
       try {
         const infoSnap = await getDoc(doc(db, "settings", "churchInfo"));
         if (infoSnap.exists()) {
-          setChurchData(prev => ({ ...prev, ...infoSnap.data() }));
+          setChurchData(infoSnap.data());
+        } else {
+          setChurchData(DEFAULT_CHURCH_DATA);
         }
       } catch (error) {
         console.error("Помилка завантаження інформації:", error);
+        setChurchData(DEFAULT_CHURCH_DATA);
+      } finally {
+        setLoadingChurch(false);
       }
 
+      // 2. Завантаження розкладу
       try {
         const scheduleSnap = await getDocs(collection(db, "schedule"));
         const now = new Date();
@@ -95,6 +105,7 @@ export default function App() {
         setLoadingSchedule(false);
       }
 
+      // 3. Завантаження новин
       try {
         const newsSnap = await getDocs(collection(db, "news"));
         const loadedNews = newsSnap.docs.map(doc => {
@@ -103,8 +114,13 @@ export default function App() {
         });
         loadedNews.sort((a, b) => b.createdAt - a.createdAt);
         setNewsList(loadedNews);
-      } catch (error) { console.error("Новини:", error); } finally { setLoadingNews(false); }
+      } catch (error) { 
+        console.error("Помилка новин:", error); 
+      } finally { 
+        setLoadingNews(false); 
+      }
 
+      // 4. Завантаження фотоальбомів
       try {
         const albumsSnap = await getDocs(collection(db, "photoAlbums"));
         if (!albumsSnap.empty) {
@@ -115,12 +131,17 @@ export default function App() {
           loadedAlbums.sort((a, b) => b.createdAt - a.createdAt);
           setAlbumsList(loadedAlbums);
         }
-      } catch (error) { console.error("Альбоми:", error); } finally { setLoadingAlbums(false); }
+      } catch (error) { 
+        console.error("Помилка альбомів:", error); 
+      } finally { 
+        setLoadingAlbums(false); 
+      }
     };
 
     fetchData();
   }, []);
 
+  // Керування стрілками клавіатури у фотогалереї
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (lightboxIndex === null || !selectedAlbum?.photos) return;
@@ -249,6 +270,16 @@ export default function App() {
 
     return weeks;
   };
+
+  // Показуємо плавну екранну заставку, поки дані летять з Firebase
+  if (loadingChurch || !churchData) {
+    return (
+      <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center space-y-3">
+        <div className="w-10 h-10 border-4 border-amber-800 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-amber-900 font-serif font-semibold text-sm tracking-wide">Завантаження даних храму...</p>
+      </div>
+    );
+  }
 
   const schedule4Weeks = build4WeeksSchedule();
 
@@ -629,7 +660,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox (Повноекранний перегляд фото зі свайпами та стрілками без індикатора) */}
+      {/* Lightbox (Перегляд фото) */}
       {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-4 select-none" 
