@@ -4,7 +4,8 @@ import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   Menu, X, Calendar, Clock, MapPin, Phone, Mail, ChevronRight, 
   ArrowLeft, Folder, Image as ImageIcon, ZoomIn, 
-  ExternalLink, ChevronLeft as ChevronLeftIcon, ChevronDown, ChevronUp 
+  ExternalLink, ChevronLeft as ChevronLeftIcon, ChevronDown, ChevronUp,
+  BookOpen, Sparkles
 } from 'lucide-react';
 import './App.css';
 
@@ -49,6 +50,281 @@ const DEFAULT_PHOTO_ALBUMS = [
   }
 ];
 
+(function (root) {
+  const MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
+  const MNOM = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
+  const WEEKDAYS = ["неділя", "понеділок", "вівторок", "середа", "четвер", "п’ятниця", "субота"];
+
+  function parseRawData(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith("[")) {
+        try { return JSON.parse(trimmed); } catch (e) { return []; }
+      }
+      if (typeof document !== "undefined") {
+        const el = document.getElementById(trimmed.replace(/^#/, ""));
+        if (el && el.textContent.trim().startsWith("[")) {
+          try { return JSON.parse(el.textContent); } catch (e) { return []; }
+        }
+      }
+    }
+    return [];
+  }
+
+  function stripTags(html) {
+    return String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function createCalendar2027(rawData) {
+    const entries = parseRawData(rawData);
+    const byKey = new Map();
+    for (const item of entries) {
+      if (item && typeof item.m === "number" && typeof item.d === "number") {
+        byKey.set(`${item.m}-${item.d}`, item);
+      }
+    }
+
+    function getDay(m, d) {
+      const item = byKey.get(`${m}-${d}`) || null;
+      const dt = new Date(2027, m - 1, d);
+      const valid = dt.getFullYear() === 2027 && dt.getMonth() === m - 1 && dt.getDate() === d;
+      const paragraphs = item && Array.isArray(item.p) ? item.p : [];
+      const plainText = paragraphs.map(p => stripTags(p.h)).join(" \n ");
+      return {
+        year: 2027,
+        month: m,
+        day: d,
+        date: valid ? dt : null,
+        monthNameGen: MONTHS[m - 1] || "",
+        monthNameNom: MNOM[m - 1] || "",
+        weekday: valid ? WEEKDAYS[dt.getDay()] : "",
+        isRed: Boolean(item && item.x),
+        paragraphs,
+        plainText,
+        raw: item
+      };
+    }
+
+    function getMonth(m) {
+      const daysInMonth = new Date(2027, m, 0).getDate();
+      const res = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        res.push(getDay(m, d));
+      }
+      return res;
+    }
+
+    function search(query) {
+      const q = String(query || "").trim().toLowerCase();
+      if (!q) return [];
+      return entries.filter(item => {
+        const text = (item.p || []).map(p => stripTags(p.h)).join(" ").toLowerCase();
+        return text.includes(q);
+      }).map(item => getDay(item.m, item.d));
+    }
+
+    return { year: 2027, entries, getDay, getMonth, search };
+  }
+
+  const defaultDataEl = typeof document !== "undefined" ? document.getElementById("data") : null;
+  const cal = createCalendar2027(defaultDataEl ? defaultDataEl.textContent : []);
+  cal.create = createCalendar2027;
+  root.ChurchCalendar2027 = cal;
+})(typeof window !== "undefined" ? window : globalThis);
+
+function getInitial2027Date() {
+  const now = new Date();
+  const yr = now.getFullYear();
+  if (yr < 2027) {
+    return { month: 1, day: 1 };
+  }
+  if (yr > 2027) {
+    return { month: 12, day: 31 };
+  }
+  return { month: now.getMonth() + 1, day: now.getDate() };
+}
+
+function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const initialDate = React.useMemo(() => getInitial2027Date(), []);
+  const cal = React.useMemo(() => window.ChurchCalendar2027.create(data), [data]);
+  const [view, setView] = useState('day');
+  const [month, setMonth] = useState(initialDate.month);
+  const [day, setDay] = useState(initialDate.day);
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((json) => {
+        if (active && Array.isArray(json)) setData(json);
+      })
+      .catch(() => {
+        if (active) setData([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [url]);
+
+  const MONTHS_NOM = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-md border border-amber-200 text-center text-xs sm:text-sm text-stone-500">
+        Завантаження церковного календаря на 2027 рік...
+      </div>
+    );
+  }
+
+  const shiftDay = (delta) => {
+    const dt = new Date(2027, month - 1, day);
+    dt.setDate(dt.getDate() + delta);
+    if (dt.getFullYear() === 2027) {
+      setMonth(dt.getMonth() + 1);
+      setDay(dt.getDate());
+    }
+  };
+
+  const dayInfo = cal.getDay(month, day);
+  const monthDays = cal.getMonth(month);
+  const searchResults = query.trim() ? cal.search(query) : [];
+
+  return (
+    <div id="calendar-2027" className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-8 shadow-md border border-amber-200 space-y-4 sm:space-y-5 overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-100 pb-3 sm:pb-4">
+        <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+          <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-amber-800 flex-shrink-0" />
+          <div className="min-w-0">
+            <h3 className="text-sm sm:text-xl font-serif font-bold text-slate-900 leading-snug">Церковний календар на 2027 рік</h3>
+            <p className="text-[10px] sm:text-xs text-stone-500 font-medium">Свята, пости та читання по днях</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 sm:flex rounded-xl bg-amber-50 p-1 border border-amber-200 w-full sm:w-auto flex-shrink-0">
+          <button type="button" onClick={() => setView('day')} className={`px-2.5 sm:px-3 py-1.5 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer text-center ${view === 'day' ? 'bg-amber-800 text-white' : 'text-amber-900 hover:bg-amber-100'}`}>День</button>
+          <button type="button" onClick={() => setView('month')} className={`px-2.5 sm:px-3 py-1.5 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer text-center ${view === 'month' ? 'bg-amber-800 text-white' : 'text-amber-900 hover:bg-amber-100'}`}>Місяць</button>
+          <button type="button" onClick={() => setView('search')} className={`px-2.5 sm:px-3 py-1.5 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer text-center ${view === 'search' ? 'bg-amber-800 text-white' : 'text-amber-900 hover:bg-amber-100'}`}>Пошук</button>
+        </div>
+      </div>
+
+      {view === 'day' && (
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="date"
+              min="2027-01-01"
+              max="2027-12-31"
+              value={`2027-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                const [y, m, d] = e.target.value.split('-').map(Number);
+                if (y === 2027) { setMonth(m); setDay(d); }
+              }}
+              className="w-full sm:w-auto px-3 py-2 rounded-xl border border-amber-200 text-xs sm:text-sm bg-amber-50/40 min-w-0"
+            />
+            <div className="grid grid-cols-2 sm:flex gap-2 sm:ml-auto w-full sm:w-auto">
+              <button type="button" onClick={() => shiftDay(-1)} className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[11px] sm:text-xs font-bold text-amber-900 cursor-pointer text-center">← Попередній</button>
+              <button type="button" onClick={() => shiftDay(1)} className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[11px] sm:text-xs font-bold text-amber-900 cursor-pointer text-center">Наступний →</button>
+            </div>
+          </div>
+
+          <div className="bg-[#FAF9F6] rounded-2xl p-3.5 sm:p-6 border border-amber-200/80 space-y-3">
+            <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap border-b border-amber-200/60 pb-2.5 sm:pb-3">
+              <span className={`text-2xl sm:text-4xl font-serif font-bold ${dayInfo.isRed ? 'text-red-700' : 'text-amber-800'}`}>{dayInfo.day}</span>
+              <span className="text-xs sm:text-base font-bold text-slate-900">{dayInfo.day} {dayInfo.monthNameGen} {dayInfo.year}</span>
+              <span className="text-[11px] sm:text-xs text-stone-500">{dayInfo.weekday}</span>
+            </div>
+            {dayInfo.paragraphs.length > 0 ? (
+              <div className="space-y-2 text-xs sm:text-sm text-stone-700 leading-relaxed break-words [&_s]:no-underline [&_s]:text-inherit">
+                {dayInfo.paragraphs.map((p, idx) => (
+                  <p key={idx} dangerouslySetInnerHTML={{ __html: p.h }} />
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs sm:text-sm text-stone-500">Запис за цей день ще не додано до календаря.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {view === 'month' && (
+        <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 sm:gap-2">
+            {MONTHS_NOM.map((mName, idx) => {
+              const mNum = idx + 1;
+              return (
+                <button
+                  key={mNum}
+                  type="button"
+                  onClick={() => { setMonth(mNum); setDay(1); }}
+                  className={`py-2 px-1.5 sm:px-2 rounded-xl text-[11px] sm:text-xs font-bold border transition cursor-pointer truncate ${month === mNum ? 'bg-amber-800 text-white border-amber-800' : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100'}`}
+                >
+                  {mName}
+                </button>
+              );
+            })}
+          </div>
+          <div className="divide-y divide-stone-100 border border-amber-200/70 rounded-2xl bg-[#FAF9F6] px-2.5 sm:px-4 max-h-80 sm:max-h-96 overflow-y-auto">
+            {monthDays.map((dInfo) => {
+              const firstLine = (dInfo.paragraphs[0]?.h || '—').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              return (
+                <div
+                  key={dInfo.day}
+                  onClick={() => { setDay(dInfo.day); setView('day'); }}
+                  className="py-2 sm:py-2.5 flex items-baseline gap-2 sm:gap-3 cursor-pointer hover:bg-amber-100/40 px-1 rounded transition min-w-0"
+                >
+                  <strong className={`w-6 sm:w-7 text-right text-xs sm:text-sm flex-shrink-0 ${dInfo.isRed ? 'text-red-700' : 'text-amber-800'}`}>{dInfo.day}</strong>
+                  <span className="flex-1 text-xs sm:text-sm text-slate-800 line-clamp-1 min-w-0">{firstLine}</span>
+                  <small className="text-[10px] sm:text-xs text-stone-500 flex-shrink-0">{dInfo.weekday}</small>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {view === 'search' && (
+        <div className="space-y-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Пошук свят, постів, імен по 2027 року..."
+            className="w-full px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-amber-200 text-xs sm:text-sm bg-amber-50/30"
+          />
+          {query.trim() ? (
+            searchResults.length > 0 ? (
+              <div className="divide-y divide-stone-100 border border-amber-200/70 rounded-2xl bg-[#FAF9F6] px-2.5 sm:px-4 max-h-72 sm:max-h-80 overflow-y-auto">
+                {searchResults.map((res) => (
+                  <div
+                    key={`${res.month}-${res.day}`}
+                    onClick={() => { setMonth(res.month); setDay(res.day); setView('day'); }}
+                    className="py-2 sm:py-2.5 flex items-baseline gap-2 sm:gap-3 cursor-pointer hover:bg-amber-100/40 px-1 rounded transition min-w-0"
+                  >
+                    <strong className={`text-xs sm:text-sm flex-shrink-0 ${res.isRed ? 'text-red-700' : 'text-amber-800'}`}>{res.day}.{String(res.month).padStart(2, '0')}</strong>
+                    <span className="flex-1 text-xs sm:text-sm text-slate-800 line-clamp-2 min-w-0">{res.plainText}</span>
+                    <small className="text-[10px] sm:text-xs text-stone-500 flex-shrink-0">{res.monthNameGen}</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs sm:text-sm text-stone-500 py-4 text-center">Нічого не знайдено за запитом «{query}».</p>
+            )
+          ) : (
+            <p className="text-xs text-stone-500">Введіть ключове слово для пошуку по календарі 2027 року.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
@@ -70,9 +346,17 @@ export default function App() {
   const [albumsList, setAlbumsList] = useState(DEFAULT_PHOTO_ALBUMS);
   const [loadingAlbums, setLoadingAlbums] = useState(true);
 
+  const [booksList, setBooksList] = useState([]);
+  const [loadingBooks, setLoadingBooks] = useState(true);
+
+  const [sacramentsList, setSacramentsList] = useState([]);
+  const [loadingSacraments, setLoadingSacraments] = useState(true);
+
   const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [selectedNews, setSelectedNews] = useState(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [selectedSacrament, setSelectedSacrament] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [isZoomed, setIsZoomed] = useState(false);
 
@@ -161,6 +445,55 @@ export default function App() {
       } finally { 
         setLoadingAlbums(false); 
       }
+
+      try {
+        const booksSnap = await getDocs(collection(db, "libraryBooks"));
+        const flatBooks = [];
+        booksSnap.docs.forEach(docItem => {
+          const data = docItem.data();
+          if (Array.isArray(data.books) && data.books.length > 0) {
+            data.books.forEach((bk, idx) => {
+              flatBooks.push({
+                id: `${docItem.id}-${bk.id || idx}`,
+                title: bk.title || data.title || 'Книга',
+                author: bk.author || '',
+                coverUrl: bk.coverUrl || data.cover || '',
+                fileUrl: bk.fileUrl || '',
+                description: bk.description || '',
+                date: data.date || ''
+              });
+            });
+          } else {
+            flatBooks.push({
+              id: docItem.id,
+              title: data.title || 'Книга',
+              author: data.author || '',
+              coverUrl: data.cover || data.coverUrl || '',
+              fileUrl: data.fileUrl || '',
+              description: data.description || '',
+              date: data.date || ''
+            });
+          }
+        });
+        setBooksList(flatBooks);
+      } catch (error) {
+        console.error("Помилка бібліотеки:", error);
+      } finally {
+        setLoadingBooks(false);
+      }
+
+      try {
+        const sacSnap = await getDocs(collection(db, "sacramentsPrep"));
+        const loadedSac = sacSnap.docs.map(docItem => ({
+          id: docItem.id,
+          ...docItem.data()
+        }));
+        setSacramentsList(loadedSac);
+      } catch (error) {
+        console.error("Помилка підготовки до таїнств:", error);
+      } finally {
+        setLoadingSacraments(false);
+      }
     };
 
     fetchData();
@@ -209,9 +542,13 @@ export default function App() {
     if (type === 'news') { setSelectedNews(item); setPageView('single-news'); }
     else if (type === 'announcement') { setSelectedAnnouncement(item); setPageView('single-announcement'); }
     else if (type === 'album') { setSelectedAlbum(item); setPageView('single-album'); }
+    else if (type === 'book') { setSelectedBook(item); setPageView('single-book'); }
+    else if (type === 'sacrament') { setSelectedSacrament(item); setPageView('single-sacrament'); }
     else if (type === 'all-news') { setPageView('all-news'); }
     else if (type === 'all-announcements') { setPageView('all-announcements'); }
     else if (type === 'all-albums') { setPageView('all-albums'); }
+    else if (type === 'all-books') { setPageView('all-books'); }
+    else if (type === 'all-sacraments') { setPageView('all-sacraments'); }
     else if (type === 'all-schedule') { setPageView('all-schedule'); }
     window.scrollTo(0, 0);
   };
@@ -342,9 +679,11 @@ export default function App() {
             <nav className="hidden md:flex items-center space-x-1 font-medium text-sm">
               <button onClick={() => scrollToSection('home')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'home' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Головна</button>
               <button onClick={() => scrollToSection('info')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'info' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Інформація</button>
-              <button onClick={() => openItemView('all-albums')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'all-albums' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Фототека</button>
+              <button onClick={() => scrollToSection('calendar-2027')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'calendar-2027' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Календар</button>
+              <button onClick={() => openItemView('all-albums')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'all-albums' || pageView === 'single-album' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Фототека</button>
               <button onClick={() => scrollToSection('news')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'news' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Новини</button>
               <button onClick={() => scrollToSection('contacts')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'contacts' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Контакти</button>
+              <button onClick={() => openItemView('all-books')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'all-books' || pageView === 'single-book' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Бібліотека</button>
             </nav>
 
             <div className="md:hidden">
@@ -359,9 +698,11 @@ export default function App() {
           <div className="md:hidden bg-white border-t border-stone-200 px-4 py-3 space-y-1 shadow-lg">
             <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('home'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Головна</button>
             <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('info'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Інформація</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('contacts'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Контакти</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('calendar-2027'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Календар</button>
             <button onClick={() => { setIsMobileMenuOpen(false); openItemView('all-albums'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Фототека</button>
             <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('news'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Новини</button>
-            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('contacts'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Контакти</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); openItemView('all-books'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Бібліотека</button>
           </div>
         )}
       </header>
@@ -371,7 +712,7 @@ export default function App() {
           <>
             {/* Hero Section */}
             <section id="home" className="relative bg-slate-950 text-white py-24 sm:py-48 lg:py-72 overflow-hidden">
-              <div className="absolute inset-0 bg-cover bg-center opacity-50" style={{ backgroundImage: `url('https://scontent-iev1-1.xx.fbcdn.net/v/t1.6435-9/140737096_164988195388473_5077406916130826611_n.jpg?stp=dst-jpg_tt6&cstp=mx1167x1762&ctp=s1167x1762&_nc_cat=103&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=P8KxkbZXSNcQ7kNvwECoCSw&_nc_oc=AdpS9415cf9TFX-I9eCkstCz5zhCPvkGT48xXY42N32hbylXHfDYHo8OnzPZK2sfqpA&_nc_zt=23&_nc_ht=scontent-iev1-1.xx&_nc_gid=rPjI2IMKFiO9bzBZJHgSsA&_nc_ss=7b289&oh=00_AQN_fA27jemzdMqsl2y4zK423RoC0nHikjLJR763vCVZ4g&oe=6AF710C2')` }}></div>
+              <div className="absolute inset-0 bg-cover bg-center opacity-50" style={{ backgroundImage: `url('https://scontent-iev1-1.xx.fbcdn.net/v/t1.6435-9/140737096_164988195388473_5077406916130826611_n.jpg?stp=dst-jpg_tt6&cstp=mx1167x1762&ctp=s1167x1762&_nc_cat=103&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=wFp6MbvykhwQ7kNvwE2RVYa&_nc_oc=AdoG9bd9HJdqIWHMDpKREAImzl3ZGN9n7XBeBK9orsQwLKL7bmMrTkRtJY9H8iHQAyk&_nc_zt=23&_nc_ht=scontent-iev1-1.xx&_nc_gid=7xSYd9brCcJivMgzZcUUUQ&_nc_ss=7b2a8&oh=00_AQQMyv4FqW2rINNuEgLnc5dSc8cnISNvH6su_mPYl1UK8w&oe=6B2686C2')` }}></div>
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent"></div>
               <div className="relative max-w-5xl mx-auto px-4 text-center space-y-4 sm:space-y-6">
                 <h1 className="text-2xl sm:text-5xl lg:text-6xl font-serif font-bold text-amber-100 leading-tight">{churchData.title}</h1>
@@ -407,6 +748,36 @@ export default function App() {
                       alt="Храм" 
                       className="w-full h-56 sm:h-80 object-contain rounded-2xl" 
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Contacts (перенесено перед розкладом, однакова висота коробок) */}
+              <div id="contacts" className="space-y-6 pt-2">
+                <div className="text-center max-w-3xl mx-auto space-y-2">
+                  <span className="text-xs uppercase tracking-widest text-amber-800 font-bold">Контакти</span>
+                  <h3 className="text-xl sm:text-3xl font-serif font-bold text-slate-900">Як нас знайти</h3>
+                  <div className="w-16 h-1 bg-amber-800 mx-auto rounded-full"></div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                  <div className="lg:col-span-5 bg-white p-5 sm:p-8 rounded-3xl border border-amber-200 shadow-sm flex flex-col justify-between space-y-4 h-full">
+                    <h4 className="text-base sm:text-xl font-serif font-bold text-amber-800">Контактна інформація</h4>
+                    <div className="space-y-3 text-xs sm:text-sm text-stone-700 flex-grow">
+                      <div className="flex items-start space-x-3"><MapPin className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Адреса</span><span>{churchData.address}</span></div></div>
+                      <div className="flex items-start space-x-3"><Phone className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Телефон</span><a href={`tel:${churchData.phone}`} className="hover:underline">{churchData.phone}</a></div></div>
+                      <div className="flex items-start space-x-3"><Mail className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Електронна пошта</span><a href={`mailto:${churchData.email}`} className="hover:underline">{churchData.email}</a></div></div>
+                      <div className="flex items-start space-x-3"><Clock className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Години роботи</span><span>{churchData.workingHours}</span></div></div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-7 bg-white rounded-3xl overflow-hidden border border-amber-200 shadow-sm h-64 sm:h-80 flex flex-col justify-center items-center text-center p-6">
+                    <MapPin className="w-8 h-8 sm:w-12 sm:h-12 text-amber-800 mb-2 animate-bounce" />
+                    <h4 className="font-serif font-bold text-sm sm:text-lg text-slate-900">{churchData.title}</h4>
+                    <p className="text-[11px] sm:text-xs text-stone-600 max-w-sm mt-1">{churchData.address}</p>
+                    <a href={`https://maps.google.com/?q=${encodeURIComponent(churchData.address)}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center text-xs font-bold text-white bg-amber-700 px-4 py-2 rounded-xl hover:bg-amber-800 transition shadow">
+                      Відкрити карту Google <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                    </a>
                   </div>
                 </div>
               </div>
@@ -448,6 +819,8 @@ export default function App() {
                   <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Наразі немає активних розкладів на найближчі дні.</div>
                 )}
               </div>
+
+              <ChurchCalendar2027Widget url="/calendar-2027.json" />
             </section>
 
             {/* Оголошення та події */}
@@ -529,38 +902,130 @@ export default function App() {
               )}
             </section>
 
-            {/* Contacts */}
-            <section id="contacts" className="py-10 sm:py-20 bg-[#FAF9F6] border-t border-amber-200">
+            {/* Підготовка до таїнств */}
+            <section id="sacraments" className="py-10 sm:py-20 bg-stone-100/80 border-t border-stone-200">
               <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-8">
                 <div className="text-center max-w-3xl mx-auto space-y-2">
-                  <span className="text-xs uppercase tracking-widest text-amber-800 font-bold">Контакти</span>
-                  <h2 className="text-2xl sm:text-4xl font-serif font-bold text-slate-900">Як нас знайти</h2>
+                  <h2 className="text-2xl sm:text-4xl font-serif font-bold text-slate-900">Підготовка до таїнств</h2>
                   <div className="w-16 h-1 bg-amber-800 mx-auto rounded-full"></div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  <div className="lg:col-span-5 bg-white p-5 sm:p-8 rounded-3xl border border-amber-200 shadow-sm space-y-4">
-                    <h3 className="text-base sm:text-xl font-serif font-bold text-amber-800">Контактна інформація</h3>
-                    <div className="space-y-3 text-xs sm:text-sm text-stone-700">
-                      <div className="flex items-start space-x-3"><MapPin className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Адреса</span><span>{churchData.address}</span></div></div>
-                      <div className="flex items-start space-x-3"><Phone className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Телефон</span><a href={`tel:${churchData.phone}`} className="hover:underline">{churchData.phone}</a></div></div>
-                      <div className="flex items-start space-x-3"><Mail className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Електронна пошта</span><a href={`mailto:${churchData.email}`} className="hover:underline">{churchData.email}</a></div></div>
-                      <div className="flex items-start space-x-3"><Clock className="w-4 h-4 text-amber-800 mt-0.5 flex-shrink-0" /><div><span className="font-bold text-amber-900 block">Години роботи</span><span>{churchData.workingHours}</span></div></div>
-                    </div>
+                {loadingSacraments ? (
+                  <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Завантаження...</div>
+                ) : sacramentsList.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                    {sacramentsList.map((item) => (
+                      <div key={item.id} onClick={() => openItemView('sacrament', item)} className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition cursor-pointer p-4 sm:p-5 flex flex-col justify-between space-y-3 group">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Sparkles className="w-4 h-4 flex-shrink-0" />
+                            {item.subtitle && <span className="text-[10px] sm:text-xs font-bold">{item.subtitle}</span>}
+                          </div>
+                          <h3 className="font-serif font-bold text-slate-900 text-sm sm:text-base group-hover:text-amber-800 transition">{item.title}</h3>
+                          <p className="text-[11px] sm:text-xs text-stone-600 line-clamp-3">{item.content}</p>
+                        </div>
+                        <div className="pt-2 text-xs font-bold text-amber-800 flex items-center">
+                          <span>Детальніше про підготовку</span>
+                          <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-
-                  <div className="lg:col-span-7 bg-white rounded-3xl overflow-hidden border border-amber-200 shadow-sm h-56 sm:h-80 flex flex-col justify-center items-center text-center p-4">
-                    <MapPin className="w-8 h-8 sm:w-12 sm:h-12 text-amber-800 mb-2 animate-bounce" />
-                    <h4 className="font-serif font-bold text-sm sm:text-lg text-slate-900">{churchData.title}</h4>
-                    <p className="text-[11px] sm:text-xs text-stone-600 max-w-sm mt-1">{churchData.address}</p>
-                    <a href={`https://maps.google.com/?q=${encodeURIComponent(churchData.address)}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center text-xs font-bold text-white bg-amber-700 px-4 py-2 rounded-xl hover:bg-amber-800 transition shadow">
-                      Відкрити карту Google <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
-                    </a>
-                  </div>
-                </div>
+                ) : (
+                  <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Блоки підготовки до таїнств ще не додано.</div>
+                )}
               </div>
             </section>
           </>
+        )}
+
+        {/* Підсторінка: Електронна бібліотека (як у фототеці) */}
+        {pageView === 'all-books' && (
+          <section className="py-8 sm:py-16 max-w-7xl mx-auto px-3 sm:px-6 space-y-6">
+            <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
+            <h2 className="text-2xl sm:text-4xl font-serif font-bold text-center">Електронна бібліотека</h2>
+            {loadingBooks ? (
+              <div className="text-center py-6 text-sm text-stone-500">Завантаження книжок...</div>
+            ) : booksList.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {booksList.map(book => (
+                  <div key={book.id} onClick={() => openItemView('book', book)} className="bg-white rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition p-3 cursor-pointer flex flex-col justify-between space-y-2">
+                    <div>
+                      <div className="h-48 w-full bg-stone-100 rounded-lg mb-2 flex items-center justify-center p-2">
+                        {book.coverUrl ? (
+                          <img src={getDirectImageUrl(book.coverUrl)} alt={book.title} className="w-full h-full object-contain rounded-lg" />
+                        ) : (
+                          <BookOpen className="w-10 h-10 text-amber-800/50" />
+                        )}
+                      </div>
+                      <h3 className="font-serif font-bold text-sm text-slate-900">{book.title}</h3>
+                      {book.author && <p className="text-xs text-stone-500 mt-0.5">{book.author}</p>}
+                    </div>
+                    <span className="text-xs font-bold text-amber-800 pt-1">Читати →</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-sm text-stone-500">Книжок поки немає.</div>
+            )}
+          </section>
+        )}
+
+        {/* Підсторінка: Обрана книжка */}
+        {pageView === 'single-book' && selectedBook && (
+          <section className="py-8 sm:py-16 max-w-4xl mx-auto px-3 sm:px-6 space-y-6">
+            <button onClick={() => setPageView('all-books')} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до електронної бібліотеки</button>
+            <div className="bg-white rounded-3xl overflow-hidden border border-stone-200 p-4 sm:p-8 space-y-4">
+              {selectedBook.coverUrl && (
+                <div className="relative min-h-[220px] max-h-[450px] w-full rounded-2xl overflow-hidden bg-stone-100 flex items-center justify-center p-2">
+                  <img src={getDirectImageUrl(selectedBook.coverUrl)} alt={selectedBook.title} className="max-h-[420px] w-auto max-w-full object-contain rounded-xl" />
+                </div>
+              )}
+              <div className="space-y-1">
+                {selectedBook.author && <div className="text-xs font-bold text-amber-800">{selectedBook.author}</div>}
+                <h2 className="text-xl sm:text-3xl font-serif font-bold text-slate-900">{selectedBook.title}</h2>
+              </div>
+              {selectedBook.description && (
+                <div className="text-stone-700 text-xs sm:text-base leading-relaxed whitespace-pre-line">{selectedBook.description}</div>
+              )}
+              {selectedBook.fileUrl && (
+                <div className="pt-2">
+                  <a href={getDirectImageUrl(selectedBook.fileUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center text-xs sm:text-sm font-bold text-white bg-amber-700 px-5 py-2.5 rounded-xl hover:bg-amber-800 transition shadow">
+                    Читати книжку <ExternalLink className="w-4 h-4 ml-2" />
+                  </a>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Підсторінка: Підготовка до конкретного таїнства */}
+        {pageView === 'single-sacrament' && selectedSacrament && (
+          <section className="py-8 sm:py-16 max-w-4xl mx-auto px-3 sm:px-6 space-y-6">
+            <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
+            <div className="bg-white rounded-3xl overflow-hidden border border-stone-200 p-4 sm:p-8 space-y-4">
+              {selectedSacrament.image && (
+                <div className="relative min-h-[220px] max-h-[450px] w-full rounded-2xl overflow-hidden bg-stone-100 flex items-center justify-center p-2">
+                  <img src={getDirectImageUrl(selectedSacrament.image)} alt={selectedSacrament.title} className="max-h-[420px] w-auto max-w-full object-contain rounded-xl" />
+                </div>
+              )}
+              <div className="space-y-1">
+                {selectedSacrament.subtitle && <div className="text-xs font-bold text-amber-800">{selectedSacrament.subtitle}</div>}
+                <h2 className="text-xl sm:text-3xl font-serif font-bold text-slate-900">{selectedSacrament.title}</h2>
+              </div>
+              {selectedSacrament.requirements && (
+                <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 text-xs sm:text-sm text-stone-800">
+                  <span className="font-bold text-amber-950">Підготовка та умови: </span>{selectedSacrament.requirements}
+                </div>
+              )}
+              {selectedSacrament.scheduleNote && (
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-xs sm:text-sm text-stone-800">
+                  <span className="font-bold text-slate-900">Коли звершується: </span>{selectedSacrament.scheduleNote}
+                </div>
+              )}
+              <div className="text-stone-700 text-xs sm:text-base leading-relaxed whitespace-pre-line">{selectedSacrament.content}</div>
+            </div>
+          </section>
         )}
 
         {/* Підсторінка: Повний розклад на 4 тижні */}
@@ -834,8 +1299,3 @@ export default function App() {
     </div>
   );
 }
-{/*
-  1 книги
-  2 підготовка до таїнств
-  3 перенести контакти
-  */}
