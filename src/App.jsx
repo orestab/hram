@@ -9,6 +9,24 @@ import {
 } from 'lucide-react';
 import './App.css';
 
+const OrthodoxCrossIcon = ({ className = "w-4 h-4 flex-shrink-0" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.9"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <line x1="12" y1="2" x2="12" y2="22" />
+    <line x1="8.5" y1="5.5" x2="15.5" y2="5.5" />
+    <line x1="5.5" y1="9.5" x2="18.5" y2="9.5" />
+    <line x1="7.5" y1="17.5" x2="16.5" y2="15.5" />
+  </svg>
+);
+
 // Автоматичний конвертер будь-яких посилань Google Drive у робочий потік для <img>
 const getDirectImageUrl = (url) => {
   if (!url) return '';
@@ -918,7 +936,7 @@ export default function App() {
                       <div key={item.id} onClick={() => openItemView('sacrament', item)} className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition cursor-pointer p-4 sm:p-5 flex flex-col justify-between space-y-3 group">
                         <div className="space-y-1.5">
                           <div className="flex items-center space-x-2 text-amber-800">
-                            <Sparkles className="w-4 h-4 flex-shrink-0" />
+                            <OrthodoxCrossIcon className="w-4 h-4 flex-shrink-0" />
                             {item.subtitle && <span className="text-[10px] sm:text-xs font-bold">{item.subtitle}</span>}
                           </div>
                           <h3 className="font-serif font-bold text-slate-900 text-sm sm:text-base group-hover:text-amber-800 transition">{item.title}</h3>
