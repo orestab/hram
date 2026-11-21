@@ -4,6 +4,23 @@
 @tailwind utilities;
 
 
+@font-face {
+  font-family: 'Zakon';
+  src: url('./fonts/Zakon.ttf') format('truetype'); /* Замініть назву файлу на вашу фактичну у па папці fonts */
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Застосовуємо шрифт ZAKON для всіх елементів сайту */
+* {
+  font-family: 'Zakon', sans-serif !important;
+}
+
+body {
+  font-family: 'Zakon', sans-serif !important;
+}
+
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 90px; /* Запобігає перекриттю заголовків фіксованою шапкою */

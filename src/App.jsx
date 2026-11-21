@@ -3,10 +3,24 @@ import { db } from './firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { 
   Menu, X, Calendar, Clock, MapPin, Phone, Mail, ChevronRight, 
-  ArrowLeft, Image as ImageIcon, ZoomIn, 
-  ExternalLink, ChevronLeft as ChevronLeftIcon, Search, ChevronDown, ChevronUp 
+  ArrowLeft, Folder, Image as ImageIcon, ZoomIn, 
+  ExternalLink, ChevronLeft as ChevronLeftIcon, ChevronDown, ChevronUp 
 } from 'lucide-react';
 import './App.css';
+
+// Автоматичний конвертер будь-яких посилань Google Drive у робочий потік для <img>
+const getDirectImageUrl = (url) => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.includes('lh3.googleusercontent.com') || !trimmed.includes('drive.google.com')) {
+    return trimmed;
+  }
+  const fileIdMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (fileIdMatch && fileIdMatch[1]) {
+    return `https://lh3.googleusercontent.com/d/${fileIdMatch[1]}=s1200`;
+  }
+  return trimmed;
+};
 
 const DEFAULT_CHURCH_DATA = {
   title: "Храм Святої Софії–Премудрості Божої",
@@ -18,7 +32,7 @@ const DEFAULT_CHURCH_DATA = {
   workingHours: "Щодня з 08:00 до 19:00",
   infoTitle: "Духовний осередок при університеті ім. Лесі Українки",
   infoContent: "Храм Святої Софії–Премудрості Божої розташований за адресою м. Луцьк, вул. Винниченка, 30а в місті Луцьк. Будівництво та історія храму тісно пов'язані з Волинським національним університетом імені Лесі Українки.",
-  infoImage: "https://scontent-iev1-1.xx.fbcdn.net/v/t39.30808-6/474156837_1026994389187845_7722730926577361377_n.jpg"
+  infoImage: "https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&q=80&w=1000"
 };
 
 const DEFAULT_PHOTO_ALBUMS = [
@@ -50,11 +64,15 @@ export default function App() {
   const [newsList, setNewsList] = useState([]);
   const [loadingNews, setLoadingNews] = useState(true);
 
+  const [announcementsList, setAnnouncementsList] = useState([]);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
+
   const [albumsList, setAlbumsList] = useState(DEFAULT_PHOTO_ALBUMS);
   const [loadingAlbums, setLoadingAlbums] = useState(true);
 
   const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [selectedNews, setSelectedNews] = useState(null);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [isZoomed, setIsZoomed] = useState(false);
 
@@ -85,22 +103,15 @@ export default function App() {
 
       try {
         const scheduleSnap = await getDocs(collection(db, "schedule"));
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-
         const loadedSchedule = scheduleSnap.docs.map(doc => {
           const data = doc.data();
-          const itemDate = new Date(data.year, data.month - 1, data.day);
+          const itemDate = (data.year && data.month && data.day) 
+            ? new Date(data.year, data.month - 1, data.day) 
+            : new Date();
           return { id: doc.id, ...data, dateObj: itemDate };
         });
 
-        const activeSchedule = loadedSchedule.filter(item => {
-          if (item.isWeekly) return true;
-          return item.dateObj >= now;
-        });
-
-        activeSchedule.sort((a, b) => a.dateObj - b.dateObj);
-        setSchedule(activeSchedule);
+        setSchedule(loadedSchedule);
       } catch (error) {
         console.error("Помилка розкладу:", error);
       } finally {
@@ -119,6 +130,20 @@ export default function App() {
         console.error("Помилка новин:", error); 
       } finally { 
         setLoadingNews(false); 
+      }
+
+      try {
+        const annSnap = await getDocs(collection(db, "announcements"));
+        const loadedAnn = annSnap.docs.map(doc => {
+          const data = doc.data();
+          return { id: doc.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || 0) };
+        });
+        loadedAnn.sort((a, b) => b.createdAt - a.createdAt);
+        setAnnouncementsList(loadedAnn);
+      } catch (error) { 
+        console.error("Помилка оголошень:", error); 
+      } finally { 
+        setLoadingAnnouncements(false); 
       }
 
       try {
@@ -168,8 +193,7 @@ export default function App() {
   const handleTouchEnd = () => {
     if (isZoomed) return;
     if (!selectedAlbum?.photos) return;
-    
-    const swipeThreshold = 140; 
+    const swipeThreshold = 140;
     const diff = touchStartX.current - touchEndX.current;
     const total = selectedAlbum.photos.length;
 
@@ -183,8 +207,10 @@ export default function App() {
   const openItemView = (type, item) => {
     setScrollPosition(window.scrollY);
     if (type === 'news') { setSelectedNews(item); setPageView('single-news'); }
+    else if (type === 'announcement') { setSelectedAnnouncement(item); setPageView('single-announcement'); }
     else if (type === 'album') { setSelectedAlbum(item); setPageView('single-album'); }
     else if (type === 'all-news') { setPageView('all-news'); }
+    else if (type === 'all-announcements') { setPageView('all-announcements'); }
     else if (type === 'all-albums') { setPageView('all-albums'); }
     else if (type === 'all-schedule') { setPageView('all-schedule'); }
     window.scrollTo(0, 0);
@@ -283,6 +309,21 @@ export default function App() {
 
   const schedule4Weeks = build4WeeksSchedule();
 
+  const mainPageUpcomingServices = [];
+  schedule4Weeks.forEach(week => {
+    week.days.forEach(day => {
+      if (!day.isPast && day.services.length > 0) {
+        day.services.forEach(srv => {
+          mainPageUpcomingServices.push({
+            ...srv,
+            dayOfWeek: day.dayName,
+            dateStr: day.dateStr
+          });
+        });
+      }
+    });
+  });
+
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col selection:bg-amber-200 selection:text-amber-900 overflow-x-hidden pt-16 sm:pt-20">
       
@@ -299,11 +340,11 @@ export default function App() {
             </div>
 
             <nav className="hidden md:flex items-center space-x-1 font-medium text-sm">
-              {[{ id: 'home', label: 'Головна' }, { id: 'info', label: 'Інформація' }, { id: 'gallery', label: 'Фототека' }, { id: 'news', label: 'Новини' }, { id: 'contacts', label: 'Контакти' }].map((item) => (
-                <button key={item.id} onClick={() => scrollToSection(item.id)} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === item.id ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>
-                  {item.label}
-                </button>
-              ))}
+              <button onClick={() => scrollToSection('home')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'home' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Головна</button>
+              <button onClick={() => scrollToSection('info')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'info' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Інформація</button>
+              <button onClick={() => openItemView('all-albums')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'all-albums' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Фототека</button>
+              <button onClick={() => scrollToSection('news')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'news' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Новини</button>
+              <button onClick={() => scrollToSection('contacts')} className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${pageView === 'main' && activeSection === 'contacts' ? 'bg-amber-100 text-amber-900 font-bold' : 'text-stone-700 hover:bg-stone-100 hover:text-amber-800'}`}>Контакти</button>
             </nav>
 
             <div className="md:hidden">
@@ -316,11 +357,11 @@ export default function App() {
 
         {isMobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-stone-200 px-4 py-3 space-y-1 shadow-lg">
-            {[{ id: 'home', label: 'Головна' }, { id: 'info', label: 'Інформація' }, { id: 'gallery', label: 'Фототека' }, { id: 'news', label: 'Новини' }, { id: 'contacts', label: 'Контакти' }].map((item) => (
-              <button key={item.id} onClick={() => { setIsMobileMenuOpen(false); scrollToSection(item.id); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">
-                {item.label}
-              </button>
-            ))}
+            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('home'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Головна</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('info'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Інформація</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); openItemView('all-albums'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Фототека</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('news'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Новини</button>
+            <button onClick={() => { setIsMobileMenuOpen(false); scrollToSection('contacts'); }} className="w-full text-left px-4 py-2.5 rounded-lg font-medium text-stone-800 hover:bg-amber-50 cursor-pointer text-sm">Контакти</button>
           </div>
         )}
       </header>
@@ -360,8 +401,12 @@ export default function App() {
                   )}
                 </div>
                 <div className="lg:col-span-5">
-                  <div className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border-2 sm:border-4 border-amber-100 bg-stone-100">
-                    <img src={churchData.infoImage} alt="Храм" className="w-full h-56 sm:h-80 object-contain" />
+                  <div className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border-2 sm:border-4 border-amber-100 bg-stone-100 flex items-center justify-center p-2">
+                    <img 
+                      src={getDirectImageUrl(churchData.infoImage)} 
+                      alt="Храм" 
+                      className="w-full h-56 sm:h-80 object-contain rounded-2xl" 
+                    />
                   </div>
                 </div>
               </div>
@@ -384,12 +429,12 @@ export default function App() {
 
                 {loadingSchedule ? (
                   <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Завантаження розкладу...</div>
-                ) : schedule.length > 0 ? (
+                ) : mainPageUpcomingServices.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {schedule.slice(0, 6).map((item) => (
-                      <div key={item.id} className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/80 space-y-2">
+                    {mainPageUpcomingServices.slice(0, 6).map((item, idx) => (
+                      <div key={idx} className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/80 space-y-2">
                         <div className="flex justify-between items-center border-b border-amber-200/60 pb-1.5">
-                          <span className="font-bold text-amber-900 text-xs sm:text-sm">{item.dayOfWeek} ({item.day}.{item.month})</span>
+                          <span className="font-bold text-amber-900 text-xs sm:text-sm">{item.dayOfWeek} ({item.dateStr})</span>
                           <span className="inline-flex items-center text-[10px] sm:text-xs font-bold text-slate-900 bg-white px-2 py-0.5 rounded-lg border border-amber-200">
                             <Clock className="w-3 h-3 mr-1 text-amber-800" />{item.time}
                           </span>
@@ -400,45 +445,49 @@ export default function App() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Наразі немає активних розкладів.</div>
+                  <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Наразі немає активних розкладів на найближчі дні.</div>
                 )}
               </div>
             </section>
 
-            {/* Gallery Section */}
-            <section id="gallery" className="py-10 sm:py-20 bg-stone-100/80 border-y border-stone-200">
-              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-6">
+            {/* Оголошення та події */}
+            <section className="py-10 sm:py-20 bg-stone-100/80 border-y border-stone-200">
+              <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-8">
                 <div className="text-center max-w-3xl mx-auto space-y-2">
-                  <h2 className="text-2xl sm:text-4xl font-serif font-bold text-slate-900">Фототека</h2>
+                  <h2 className="text-2xl sm:text-4xl font-serif font-bold text-slate-900">Оголошення та події</h2>
                   <div className="w-16 h-1 bg-amber-800 mx-auto rounded-full"></div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {albumsList.slice(0, 4).map((album) => (
-                    <div key={album.id} onClick={() => openItemView('album', album)} className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-xl transition cursor-pointer flex flex-col group">
-                      <div className="h-48 sm:h-56 relative overflow-hidden bg-stone-100 flex items-center justify-center p-1">
-                        <img src={album.cover} alt={album.title} className="w-full h-full object-contain group-hover:scale-105 transition duration-500" />
-                        <div className="absolute top-2 right-2 bg-slate-950/75 text-amber-200 text-xs font-bold px-2 py-0.5 rounded-lg flex items-center space-x-1">
-                          <ImageIcon className="w-3 h-3" /><span>{album.photos?.length || 0}</span>
+                {loadingAnnouncements ? (
+                  <div className="text-center py-6 text-sm text-stone-500">Завантаження оголошень...</div>
+                ) : announcementsList.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                    {announcementsList.slice(0, 3).map((item) => (
+                      <div key={item.id} onClick={() => openItemView('announcement', item)} className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col group">
+                        {item.image && (
+                          <div className="h-48 sm:h-56 relative bg-stone-100 flex items-center justify-center p-2">
+                            <img src={getDirectImageUrl(item.image)} alt={item.title} className="w-full h-full object-contain rounded-xl" />
+                          </div>
+                        )}
+                        <div className="p-3.5 sm:p-5 flex-grow flex flex-col justify-between space-y-2">
+                          <div>
+                            <span className="text-[10px] sm:text-xs text-stone-400 font-medium">{item.date}</span>
+                            <h3 className="font-serif font-bold text-slate-900 text-xs sm:text-base group-hover:text-amber-800 transition line-clamp-2 mt-1">{item.title}</h3>
+                            <p className="text-[11px] sm:text-xs text-stone-600 line-clamp-3 mt-1.5">{item.summary}</p>
+                          </div>
+                          <div className="pt-2 text-xs font-bold text-amber-800 flex items-center"><span>Читати детальніше</span><ChevronRight className="w-3.5 h-3.5 ml-1" /></div>
                         </div>
                       </div>
-                      <div className="p-3.5 sm:p-5 flex-grow flex flex-col justify-between space-y-2">
-                        <div>
-                          <span className="text-[10px] text-amber-800 font-bold uppercase">{album.date}</span>
-                          <h3 className="font-serif font-bold text-slate-900 text-xs sm:text-base group-hover:text-amber-800 transition line-clamp-1">{album.title}</h3>
-                        </div>
-                        <div className="pt-2 border-t border-stone-100 text-xs font-bold text-amber-800 flex items-center justify-between">
-                          <span>Переглянути</span><ChevronRight className="w-3.5 h-3.5" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-xs sm:text-sm text-stone-500">Наразі немає активних оголошень.</div>
+                )}
 
-                {albumsList.length > 4 && (
+                {announcementsList.length > 3 && (
                   <div className="text-center pt-2">
-                    <button onClick={() => openItemView('all-albums')} className="bg-white hover:bg-amber-50 text-amber-900 font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl border border-amber-300 shadow-sm transition cursor-pointer">
-                      Показати більше альбомів ({albumsList.length - 4})
+                    <button onClick={() => openItemView('all-announcements')} className="bg-white hover:bg-amber-50 text-amber-900 font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl border border-amber-300 shadow-sm transition cursor-pointer">
+                      Показати більше оголошень ({announcementsList.length - 3})
                     </button>
                   </div>
                 )}
@@ -455,9 +504,9 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                 {newsList.slice(0, 3).map((item) => (
                   <div key={item.id} onClick={() => openItemView('news', item)} className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col group">
-                    <div className="h-52 sm:h-60 relative bg-stone-100 flex items-center justify-center p-1">
-                      <img src={item.image} alt={item.title} className="w-full h-full object-contain" />
-                      <span className="absolute top-2.5 left-2.5 bg-slate-900/80 text-amber-200 text-[10px] font-bold uppercase px-2 py-0.5 rounded shadow">{item.category || 'Новина'}</span>
+                    <div className="h-52 sm:h-60 relative bg-stone-100 flex items-center justify-center p-2">
+                      {item.image && <img src={getDirectImageUrl(item.image)} alt={item.title} className="w-full h-full object-contain rounded-xl" />}
+                      <span className="absolute top-2.5 left-2.5 bg-slate-900/80 text-amber-200 text-[10px] font-bold uppercase px-2 py-0.5 rounded shadow z-10">{item.category || 'Новина'}</span>
                     </div>
                     <div className="p-3.5 sm:p-5 flex-grow flex flex-col justify-between space-y-2">
                       <div>
@@ -593,9 +642,11 @@ export default function App() {
           <section className="py-8 sm:py-16 max-w-4xl mx-auto px-3 sm:px-6 space-y-6">
             <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
             <div className="bg-white rounded-3xl overflow-hidden border border-stone-200 p-4 sm:p-8 space-y-4">
-              <div className="relative min-h-[220px] max-h-[450px] w-full rounded-2xl overflow-hidden bg-stone-100 flex items-center justify-center p-2">
-                <img src={selectedNews.image} alt={selectedNews.title} className="max-h-[420px] w-auto max-w-full object-contain rounded-xl" />
-              </div>
+              {selectedNews.image && (
+                <div className="relative min-h-[220px] max-h-[450px] w-full rounded-2xl overflow-hidden bg-stone-100 flex items-center justify-center p-2">
+                  <img src={getDirectImageUrl(selectedNews.image)} alt={selectedNews.title} className="max-h-[420px] w-auto max-w-full object-contain rounded-xl" />
+                </div>
+              )}
               <div className="space-y-2">
                 <div className="text-xs text-stone-500">{selectedNews.date}</div>
                 <h2 className="text-xl sm:text-3xl font-serif font-bold text-slate-900">{selectedNews.title}</h2>
@@ -605,18 +656,37 @@ export default function App() {
           </section>
         )}
 
+        {/* Підсторінка: Оголошення */}
+        {pageView === 'single-announcement' && selectedAnnouncement && (
+          <section className="py-8 sm:py-16 max-w-4xl mx-auto px-3 sm:px-6 space-y-6">
+            <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
+            <div className="bg-white rounded-3xl overflow-hidden border border-stone-200 p-4 sm:p-8 space-y-4">
+              {selectedAnnouncement.image && (
+                <div className="relative min-h-[220px] max-h-[450px] w-full rounded-2xl overflow-hidden bg-stone-100 flex items-center justify-center p-2">
+                  <img src={getDirectImageUrl(selectedAnnouncement.image)} alt={selectedAnnouncement.title} className="max-h-[420px] w-auto max-w-full object-contain rounded-xl" />
+                </div>
+              )}
+              <div className="space-y-2">
+                <div className="text-xs text-stone-500">{selectedAnnouncement.date}</div>
+                <h2 className="text-xl sm:text-3xl font-serif font-bold text-slate-900">{selectedAnnouncement.title}</h2>
+              </div>
+              <div className="text-stone-700 text-xs sm:text-base leading-relaxed whitespace-pre-line">{selectedAnnouncement.content}</div>
+            </div>
+          </section>
+        )}
+
         {/* Підсторінка: Фотоальбом */}
         {pageView === 'single-album' && selectedAlbum && (
           <section className="py-8 sm:py-16 max-w-7xl mx-auto px-3 sm:px-6 space-y-6">
-            <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
+            <button onClick={() => { setPageView('all-albums'); }} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до фототеки</button>
             <div className="bg-white rounded-3xl p-4 sm:p-6 border border-amber-200 flex justify-between items-center">
               <div><h3 className="text-lg sm:text-2xl font-serif font-bold">{selectedAlbum.title}</h3><p className="text-xs text-stone-600">{selectedAlbum.subtitle}</p></div>
               <span className="text-xs bg-amber-100 text-amber-900 px-3 py-1 rounded-full">{selectedAlbum.date}</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {selectedAlbum.photos?.map((photo, index) => (
-                <div key={photo.id || index} onClick={() => setLightboxIndex(index)} className="group relative h-44 sm:h-60 rounded-xl overflow-hidden shadow border bg-stone-100 p-1 flex items-center justify-center cursor-pointer">
-                  <img src={photo.url} alt={photo.title} className="w-full h-full object-contain group-hover:scale-105 transition" />
+                <div key={photo.id || index} onClick={() => setLightboxIndex(index)} className="group relative h-44 sm:h-60 rounded-xl overflow-hidden shadow border bg-stone-100 p-2 flex items-center justify-center cursor-pointer">
+                  <img src={getDirectImageUrl(photo.url)} alt={photo.title} className="w-full h-full object-contain group-hover:scale-105 transition" />
                 </div>
               ))}
             </div>
@@ -631,9 +701,11 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {newsList.map(item => (
                 <div key={item.id} onClick={() => openItemView('news', item)} className="bg-white rounded-2xl overflow-hidden border shadow-sm p-4 cursor-pointer">
-                  <div className="h-48 w-full bg-stone-100 rounded-lg mb-2 flex items-center justify-center p-1">
-                    <img src={item.image} alt="" className="w-full h-full object-contain" />
-                  </div>
+                  {item.image && (
+                    <div className="h-48 w-full bg-stone-100 rounded-lg mb-2 flex items-center justify-center p-2">
+                      <img src={getDirectImageUrl(item.image)} alt="" className="w-full h-full object-contain rounded-lg" />
+                    </div>
+                  )}
                   <h3 className="font-serif font-bold text-sm">{item.title}</h3>
                 </div>
               ))}
@@ -641,17 +713,39 @@ export default function App() {
           </section>
         )}
 
-        {/* Підсторінка: Усі Альбоми */}
+        {/* Підсторінка: Усі Оголошення */}
+        {pageView === 'all-announcements' && (
+          <section className="py-8 sm:py-16 max-w-7xl mx-auto px-3 sm:px-6 space-y-6">
+            <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
+            <h2 className="text-2xl font-serif font-bold text-center">Усі Оголошення та події</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {announcementsList.map(item => (
+                <div key={item.id} onClick={() => openItemView('announcement', item)} className="bg-white rounded-2xl overflow-hidden border shadow-sm p-4 cursor-pointer">
+                  {item.image && (
+                    <div className="h-48 w-full bg-stone-100 rounded-lg mb-2 flex items-center justify-center p-2">
+                      <img src={getDirectImageUrl(item.image)} alt="" className="w-full h-full object-contain rounded-lg" />
+                    </div>
+                  )}
+                  <h3 className="font-serif font-bold text-sm">{item.title}</h3>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Підсторінка: Усі Альбоми (Фототека) */}
         {pageView === 'all-albums' && (
           <section className="py-8 sm:py-16 max-w-7xl mx-auto px-3 sm:px-6 space-y-6">
             <button onClick={backToMain} className="inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 px-3.5 py-2 rounded-xl border border-amber-200 cursor-pointer"><ArrowLeft className="w-4 h-4 mr-2" /> Назад до головної</button>
-            <h2 className="text-2xl font-serif font-bold text-center">Усі Фотоальбоми</h2>
+            <h2 className="text-2xl font-serif font-bold text-center">Фототека Храму</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {albumsList.map(album => (
                 <div key={album.id} onClick={() => openItemView('album', album)} className="bg-white rounded-2xl overflow-hidden border shadow-sm p-3 cursor-pointer">
-                  <div className="h-48 w-full bg-stone-100 rounded-lg mb-2 flex items-center justify-center p-1">
-                    <img src={album.cover} alt="" className="w-full h-full object-contain" />
-                  </div>
+                  {album.cover && (
+                    <div className="h-48 w-full bg-stone-100 rounded-lg mb-2 flex items-center justify-center p-2">
+                      <img src={getDirectImageUrl(album.cover)} alt="" className="w-full h-full object-contain rounded-lg" />
+                    </div>
+                  )}
                   <h3 className="font-serif font-bold text-sm">{album.title}</h3>
                 </div>
               ))}
@@ -660,7 +754,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Lightbox*/}
+      {/* Lightbox */}
       {selectedAlbum && lightboxIndex !== null && selectedAlbum.photos && selectedAlbum.photos[lightboxIndex] && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-0 sm:p-4 select-none overflow-hidden" 
@@ -669,8 +763,6 @@ export default function App() {
           }}
         >
           <div className="relative w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-            
-            {/* Кнопка закриття */}
             <button 
               onClick={() => setLightboxIndex(null)} 
               className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full cursor-pointer z-30 backdrop-blur-md transition"
@@ -679,7 +771,6 @@ export default function App() {
               <X className="w-6 h-6" />
             </button>
 
-            {/* Кнопка "Назад"*/}
             {!isZoomed && (
               <button 
                 onClick={(e) => {
@@ -694,7 +785,6 @@ export default function App() {
               </button>
             )}
 
-            {/* Зона зображення*/}
             <div 
               className="w-full h-full flex items-center justify-center overflow-auto p-4"
               style={{ touchAction: 'pinch-zoom' }}
@@ -703,14 +793,13 @@ export default function App() {
               onTouchEnd={handleTouchEnd}
             >
               <img 
-                src={selectedAlbum.photos[lightboxIndex].url} 
+                src={getDirectImageUrl(selectedAlbum.photos[lightboxIndex].url)} 
                 alt={selectedAlbum.photos[lightboxIndex].title || "Фото"} 
                 onDoubleClick={() => setIsZoomed(!isZoomed)}
                 className={`max-h-full max-w-full object-contain transition-transform duration-300 ${isZoomed ? 'scale-150 sm:scale-250 cursor-zoom-out' : 'scale-100 cursor-zoom-in'}`} 
               />
             </div>
 
-            {/* Кнопка "Вперед"*/}
             {!isZoomed && (
               <button 
                 onClick={(e) => {
@@ -725,13 +814,11 @@ export default function App() {
               </button>
             )}
 
-            {/* Підпис до фото */}
             {!isZoomed && selectedAlbum.photos[lightboxIndex].title && (
               <p className="absolute bottom-4 text-white/90 text-xs sm:text-sm text-center px-4 font-medium line-clamp-2 z-20 bg-black/40 py-2 rounded-xl backdrop-blur-sm max-w-xl">
                 {selectedAlbum.photos[lightboxIndex].title}
               </p>
             )}
-
           </div>
         </div>
       )}
@@ -747,3 +834,8 @@ export default function App() {
     </div>
   );
 }
+{/*
+  1 книги
+  2 підготовка до таїнств
+  3 перенести контакти
+  */}
