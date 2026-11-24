@@ -68,6 +68,19 @@ const DEFAULT_PHOTO_ALBUMS = [
   }
 ];
 
+function getTodayDateParts() {
+  const now = new Date();
+  return {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  };
+}
+
+function getCalendarJsonUrl(year) {
+  return `/calendar-${year}.json`;
+}
+
 (function (root) {
   const MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
   const MNOM = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
@@ -95,7 +108,29 @@ const DEFAULT_PHOTO_ALBUMS = [
     return String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   }
 
-  function createCalendar2027(rawData) {
+  function extractParagraphs(item) {
+    if (!item) return [];
+    if (Array.isArray(item.p) && item.p.length > 0) {
+      return item.p.map((entry) => ({
+        h: typeof entry === "string" ? entry : (entry?.h || "")
+      })).filter((entry) => stripTags(entry.h).length > 0);
+    }
+
+    const lines = [];
+    if (Array.isArray(item.h)) {
+      item.h.forEach((line) => lines.push({ h: String(line || "") }));
+    }
+    if (Array.isArray(item.r)) {
+      item.r.forEach((line) => lines.push({ h: String(line || "") }));
+    }
+    if (Array.isArray(item.n)) {
+      item.n.forEach((line) => lines.push({ h: String(line || "") }));
+    }
+    return lines.filter((entry) => stripTags(entry.h).length > 0);
+  }
+
+  function createCalendarForYear(year, rawData) {
+    const targetYear = Number(year) || new Date().getFullYear();
     const entries = parseRawData(rawData);
     const byKey = new Map();
     for (const item of entries) {
@@ -106,12 +141,12 @@ const DEFAULT_PHOTO_ALBUMS = [
 
     function getDay(m, d) {
       const item = byKey.get(`${m}-${d}`) || null;
-      const dt = new Date(2027, m - 1, d);
-      const valid = dt.getFullYear() === 2027 && dt.getMonth() === m - 1 && dt.getDate() === d;
-      const paragraphs = item && Array.isArray(item.p) ? item.p : [];
+      const dt = new Date(targetYear, m - 1, d);
+      const valid = dt.getFullYear() === targetYear && dt.getMonth() === m - 1 && dt.getDate() === d;
+      const paragraphs = extractParagraphs(item);
       const plainText = paragraphs.map(p => stripTags(p.h)).join(" \n ");
       return {
-        year: 2027,
+        year: targetYear,
         month: m,
         day: d,
         date: valid ? dt : null,
@@ -126,7 +161,7 @@ const DEFAULT_PHOTO_ALBUMS = [
     }
 
     function getMonth(m) {
-      const daysInMonth = new Date(2027, m, 0).getDate();
+      const daysInMonth = new Date(targetYear, m, 0).getDate();
       const res = [];
       for (let d = 1; d <= daysInMonth; d++) {
         res.push(getDay(m, d));
@@ -138,81 +173,130 @@ const DEFAULT_PHOTO_ALBUMS = [
       const q = String(query || "").trim().toLowerCase();
       if (!q) return [];
       return entries.filter(item => {
-        const text = (item.p || []).map(p => stripTags(p.h)).join(" ").toLowerCase();
+        const text = extractParagraphs(item).map(p => stripTags(p.h)).join(" ").toLowerCase();
         return text.includes(q);
       }).map(item => getDay(item.m, item.d));
     }
 
-    return { year: 2027, entries, getDay, getMonth, search };
+    return { year: targetYear, entries, getDay, getMonth, search };
   }
 
   const defaultDataEl = typeof document !== "undefined" ? document.getElementById("data") : null;
-  const cal = createCalendar2027(defaultDataEl ? defaultDataEl.textContent : []);
-  cal.create = createCalendar2027;
+  const fallbackYear = getTodayDateParts().year;
+  const cal = createCalendarForYear(fallbackYear, defaultDataEl ? defaultDataEl.textContent : []);
+  cal.create = (rawOrYear, maybeRaw) => {
+    if (typeof rawOrYear === "number") {
+      return createCalendarForYear(rawOrYear, maybeRaw);
+    }
+    return createCalendarForYear(fallbackYear, rawOrYear);
+  };
   root.ChurchCalendar2027 = cal;
+  root.ChurchCalendar = cal;
 })(typeof window !== "undefined" ? window : globalThis);
 
-function getInitial2027Date() {
-  const now = new Date();
-  const yr = now.getFullYear();
-  if (yr < 2027) {
-    return { month: 1, day: 1 };
-  }
-  if (yr > 2027) {
-    return { month: 12, day: 31 };
-  }
-  return { month: now.getMonth() + 1, day: now.getDate() };
-}
-
-function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
+function ChurchCalendarWidget() {
+  const [today, setToday] = useState(() => getTodayDateParts());
+  const [year, setYear] = useState(() => getTodayDateParts().year);
+  const [month, setMonth] = useState(() => getTodayDateParts().month);
+  const [day, setDay] = useState(() => getTodayDateParts().day);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  const initialDate = React.useMemo(() => getInitial2027Date(), []);
-  const cal = React.useMemo(() => window.ChurchCalendar2027.create(data), [data]);
   const [view, setView] = useState('day');
-  const [month, setMonth] = useState(initialDate.month);
-  const [day, setDay] = useState(initialDate.day);
   const [query, setQuery] = useState('');
 
+  // Синхронізуємо поточну дату (день, місяць, рік) при зміні доби або поверненні на сторінку
+  useEffect(() => {
+    const syncToday = () => {
+      const next = getTodayDateParts();
+      setToday((prev) => {
+        const changed = prev.year !== next.year || prev.month !== next.month || prev.day !== next.day;
+        if (changed) {
+          setYear(next.year);
+          setMonth(next.month);
+          setDay(next.day);
+          return next;
+        }
+        return prev;
+      });
+    };
+
+    const interval = setInterval(syncToday, 60 * 1000);
+    window.addEventListener('focus', syncToday);
+    document.addEventListener('visibilitychange', syncToday);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', syncToday);
+      document.removeEventListener('visibilitychange', syncToday);
+    };
+  }, []);
+
+  // Завантажуємо /calendar-<year>.json при зміні обраного/поточного року
   useEffect(() => {
     let active = true;
+    setLoading(true);
+
+    const url = getCalendarJsonUrl(year);
     fetch(url)
       .then((res) => (res.ok ? res.json() : []))
       .then((json) => {
-        if (active && Array.isArray(json)) setData(json);
+        if (active) {
+          setData(Array.isArray(json) ? json : []);
+        }
       })
       .catch(() => {
-        if (active) setData([]);
+        if (active) {
+          setData([]);
+        }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       });
-    return () => { active = false; };
-  }, [url]);
 
+    return () => {
+      active = false;
+    };
+  }, [year]);
+
+  const cal = React.useMemo(() => window.ChurchCalendar2027.create(year, data), [year, data]);
   const MONTHS_NOM = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
 
   if (loading) {
     return (
       <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-md border border-amber-200 text-center text-xs sm:text-sm text-stone-500">
-        Завантаження церковного календаря на 2027 рік...
+        Завантаження церковного календаря на {year} рік...
       </div>
     );
   }
 
   const shiftDay = (delta) => {
-    const dt = new Date(2027, month - 1, day);
-    dt.setDate(dt.getDate() + delta);
-    if (dt.getFullYear() === 2027) {
-      setMonth(dt.getMonth() + 1);
-      setDay(dt.getDate());
+    const dt = new Date(year, month - 1, day + delta);
+    const nextYear = dt.getFullYear();
+    const nextMonth = dt.getMonth() + 1;
+    const nextDay = dt.getDate();
+
+    if (nextYear !== year) {
+      setYear(nextYear);
     }
+    setMonth(nextMonth);
+    setDay(nextDay);
+  };
+
+  const jumpToToday = () => {
+    const current = getTodayDateParts();
+    setToday(current);
+    setYear(current.year);
+    setMonth(current.month);
+    setDay(current.day);
+    setView('day');
   };
 
   const dayInfo = cal.getDay(month, day);
   const monthDays = cal.getMonth(month);
   const searchResults = query.trim() ? cal.search(query) : [];
+  const dateInputValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
   return (
     <div id="calendar-2027" className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-8 shadow-md border border-amber-200 space-y-4 sm:space-y-5 overflow-hidden">
@@ -220,8 +304,10 @@ function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
         <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
           <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-amber-800 flex-shrink-0" />
           <div className="min-w-0">
-            <h3 className="text-sm sm:text-xl font-serif font-bold text-slate-900 leading-snug">Церковний календар на 2027 рік</h3>
-            <p className="text-[10px] sm:text-xs text-stone-500 font-medium">Свята, пости та читання по днях</p>
+            <h3 className="text-sm sm:text-xl font-serif font-bold text-slate-900 leading-snug">Церковний календар на {year} рік</h3>
+            <p className="text-[10px] sm:text-xs text-stone-500 font-medium">
+              Сьогодні: {String(today.day).padStart(2, '0')}.{String(today.month).padStart(2, '0')}.{today.year} • Свята, пости та читання по днях
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-3 sm:flex rounded-xl bg-amber-50 p-1 border border-amber-200 w-full sm:w-auto flex-shrink-0">
@@ -236,18 +322,21 @@ function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="date"
-              min="2027-01-01"
-              max="2027-12-31"
-              value={`2027-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              value={dateInputValue}
               onChange={(e) => {
                 if (!e.target.value) return;
                 const [y, m, d] = e.target.value.split('-').map(Number);
-                if (y === 2027) { setMonth(m); setDay(d); }
+                if (y && m && d) {
+                  if (y !== year) setYear(y);
+                  setMonth(m);
+                  setDay(d);
+                }
               }}
               className="w-full sm:w-auto px-3 py-2 rounded-xl border border-amber-200 text-xs sm:text-sm bg-amber-50/40 min-w-0"
             />
-            <div className="grid grid-cols-2 sm:flex gap-2 sm:ml-auto w-full sm:w-auto">
+            <div className="grid grid-cols-3 sm:flex gap-2 sm:ml-auto w-full sm:w-auto">
               <button type="button" onClick={() => shiftDay(-1)} className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[11px] sm:text-xs font-bold text-amber-900 cursor-pointer text-center">← Попередній</button>
+              <button type="button" onClick={jumpToToday} className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-amber-300 bg-amber-100/70 hover:bg-amber-100 text-[11px] sm:text-xs font-bold text-amber-950 cursor-pointer text-center">Сьогодні</button>
               <button type="button" onClick={() => shiftDay(1)} className="px-2.5 sm:px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[11px] sm:text-xs font-bold text-amber-900 cursor-pointer text-center">Наступний →</button>
             </div>
           </div>
@@ -265,7 +354,7 @@ function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
                 ))}
               </div>
             ) : (
-              <p className="text-xs sm:text-sm text-stone-500">Запис за цей день ще не додано до календаря.</p>
+              <p className="text-xs sm:text-sm text-stone-500">Запис за цей день ще не додано до календаря на {year} рік.</p>
             )}
           </div>
         </div>
@@ -313,7 +402,7 @@ function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Пошук свят, постів, імен по 2027 року..."
+            placeholder={`Пошук свят, постів, імен по ${year} року...`}
             className="w-full px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-amber-200 text-xs sm:text-sm bg-amber-50/30"
           />
           {query.trim() ? (
@@ -335,7 +424,7 @@ function ChurchCalendar2027Widget({ url = '/calendar-2027.json' }) {
               <p className="text-xs sm:text-sm text-stone-500 py-4 text-center">Нічого не знайдено за запитом «{query}».</p>
             )
           ) : (
-            <p className="text-xs text-stone-500">Введіть ключове слово для пошуку по календарі 2027 року.</p>
+            <p className="text-xs text-stone-500">Введіть ключове слово для пошуку по календарі {year} року.</p>
           )}
         </div>
       )}
@@ -687,7 +776,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer" onClick={() => scrollToSection('home')}>
-              <img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5c/Emblem_of_the_Orthodox_Church_of_Ukraine.svg/250px-Emblem_of_the_Orthodox_Church_of_Ukraine.svg.png" alt="Emblem" className="w-8 h-8 sm:w-12 sm:h-12 object-contain" />
+              <img src="/favicon.png" alt="Emblem" className="w-25 h-25 sm:w-22 sm:h-22 object-contain" />
               <div>
                 <h1 className="text-xs sm:text-lg font-serif font-bold text-slate-900 leading-tight">{churchData.title}</h1>
                 <p className="text-[9px] sm:text-xs text-amber-800 font-semibold uppercase tracking-wide">{churchData.city}</p>
@@ -838,7 +927,7 @@ export default function App() {
                 )}
               </div>
 
-              <ChurchCalendar2027Widget url="/calendar-2027.json" />
+              <ChurchCalendarWidget />
             </section>
 
             {/* Оголошення та події */}
