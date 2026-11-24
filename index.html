@@ -2,7 +2,8 @@
 <html lang="uk">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -28,25 +29,39 @@
       content="Храм Святої Софії–Премудрості Божої у Луцьку на вул. Винниченка, 30а. Розклад богослужінь, календар, новини та контакти."
     />
     <meta property="og:url" content="https://hram-zeta.vercel.app/" />
-
+    <meta property="og:image" content="https://hram-zeta.vercel.app/favicon.png" />
 
     <!-- Мікророзмітка Schema.org для пошукових систем -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "Church",
-        "name": "Храм Святої Софії–Премудрості Божої",
-        "url": "https://hram-zeta.vercel.app/",
-        "telephone": "+380501234567",
-        "email": "sophiahram@gmail.com",
-        "openingHours": "Mo-Su 08:00-19:00",
-        "address": {
-          "@type": "PostalAddress",
-          "streetAddress": "вул. Винниченка, 30а",
-          "addressLocality": "Луцьк",
-          "addressRegion": "Волинська область",
-          "addressCountry": "UA"
-        }
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://hram-zeta.vercel.app/#website",
+            "name": "Храм Святої Софії–Премудрості Божої",
+            "alternateName": "Храм Святої Софії Луцьк",
+            "url": "https://hram-zeta.vercel.app/",
+            "inLanguage": "uk"
+          },
+          {
+            "@type": "Church",
+            "@id": "https://hram-zeta.vercel.app/#church",
+            "name": "Храм Святої Софії–Премудрості Божої",
+            "url": "https://hram-zeta.vercel.app/",
+            "logo": "https://hram-zeta.vercel.app/favicon.png",
+            "telephone": "+380501234567",
+            "email": "sophiahram@gmail.com",
+            "openingHours": "Mo-Su 08:00-19:00",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "вул. Винниченка, 30а",
+              "addressLocality": "Луцьк",
+              "addressRegion": "Волинська область",
+              "addressCountry": "UA"
+            }
+          }
+        ]
       }
     </script>
   </head>
